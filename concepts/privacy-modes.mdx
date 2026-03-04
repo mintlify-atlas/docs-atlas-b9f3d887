@@ -1,0 +1,395 @@
+---
+title: "Privacy modes"
+description: "Configure secret redaction and data privacy"
+---
+
+## Overview
+
+LongMem provides **three privacy modes** to control how sensitive data is handled before storage and compression.
+
+All modes operate **before data is written to disk** — secrets are never stored in plaintext.
+
+## Privacy modes
+
+### Safe mode (default)
+
+**Recommended for most users.**
+
+Redacts common secrets, blocks sensitive files, and applies custom patterns.
+
+```json
+{
+  "privacy": {
+    "mode": "safe",
+    "redactSecrets": true
+  }
+}
+```
+
+**What it does:**
+- Redacts 20+ secret patterns (API keys, tokens, private keys)
+- Blocks content from files matching `excludePaths`
+- Applies custom regex patterns from `customPatterns`
+- Quarantines observations with high-risk patterns
+
+**Use when:**
+- You work with APIs or cloud services
+- You want automatic secret detection
+- You trust the built-in patterns
+
+### Flexible mode
+
+**For advanced users with custom secret formats.**
+
+Same as safe mode, plus support for custom regex patterns.
+
+```json
+{
+  "privacy": {
+    "mode": "flexible",
+    "customPatterns": [
+      {
+        "pattern": "internal-token-[a-zA-Z0-9]{16}",
+        "name": "internal-api-token"
+      },
+      {
+        "pattern": "SESSION_[A-Z0-9]{32}",
+        "name": "session-id"
+      }
+    ]
+  }
+}
+```
+
+**What it does:**
+- Everything from safe mode
+- Compiles and applies your custom patterns
+- Validates patterns before use (rejects wildcards like `.*`)
+
+**Use when:**
+- You have proprietary secret formats
+- Built-in patterns don't catch your org's tokens
+- You need fine-grained control
+
+### None mode
+
+**Local-only setups with no compression.**
+
+<Warning>
+Secrets will NOT be redacted. Use only if data never leaves your machine.
+</Warning>
+
+```json
+{
+  "privacy": {
+    "mode": "none",
+    "redactSecrets": false
+  }
+}
+```
+
+**What it does:**
+- Skips all secret redaction
+- Still respects `excludePaths` for file-level blocking
+- No egress kill switch
+
+**Use when:**
+- Compression is disabled (no data sent to LLMs)
+- You're debugging and need raw outputs
+- You trust your local environment completely
+
+## Built-in secret patterns
+
+LongMem detects and redacts these secret types:
+
+### Cloud provider keys
+```typescript
+// daemon/shared/privacy.ts:36-46
+{ pattern: /sk-or-v1-[a-zA-Z0-9\-_]{20,}/g,     name: "openrouter-key" },
+{ pattern: /sk-ant-[a-zA-Z0-9\-_]{20,}/g,        name: "anthropic-key" },
+{ pattern: /sk-[a-zA-Z0-9\-_]{20,}/g,            name: "openai-key" },
+{ pattern: /AIza[0-9A-Za-z\-_]{35}/g,            name: "gcp-api-key" },
+{ pattern: /sk_live_[a-zA-Z0-9]{20,}/g,          name: "stripe-secret" },
+{ pattern: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/g, name: "sendgrid-key" },
+{ pattern: /npm_[a-zA-Z0-9]{36}/g,               name: "npm-token" },
+```
+
+### VCS tokens
+```typescript
+{ pattern: /ghp_[a-zA-Z0-9]{36}/g,               name: "github-pat" },
+{ pattern: /gho_[a-zA-Z0-9]{36}/g,               name: "github-oauth" },
+{ pattern: /glpat-[a-zA-Z0-9\-_]{20,}/g,         name: "gitlab-pat" },
+```
+
+### Infrastructure secrets
+```typescript
+{ pattern: /AKIA[0-9A-Z]{16}/g,                  name: "aws-access-key" },
+{ pattern: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+/g, name: "jwt" },
+{ pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g, name: "pem-private-key" },
+{ pattern: /(?:postgres|mysql|mongodb):(\/\/[^\s"']{10,})/g, name: "db-connection-string" },
+```
+
+### Generic secrets
+```typescript
+{
+  pattern: /(?:password|passwd|pwd|secret|token|api[-_]?key|auth|credential)\s*[:=]\s*["']?([^\s"',;]{8,})["']?/gi,
+  name: "generic-secret",
+}
+```
+
+See the full list in `daemon/shared/privacy.ts:36-73`.
+
+## Excluded paths
+
+LongMem **never stores content** from files matching these patterns:
+
+```typescript
+// daemon/config.ts:56-59
+const DEFAULT_EXCLUDE_PATHS = [
+  ".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_rsa.*", "id_ed25519",
+  "*.p12", "*.pfx", "*.jks", "credentials.json", "service-account.json",
+];
+```
+
+**How it works:**
+1. LongMem extracts `file_path` from tool inputs
+2. Matches filename against glob patterns
+3. If matched, stores metadata only: `[EXCLUDED: path matched denylist]`
+4. Compression is skipped for excluded files
+
+### Custom exclude paths
+
+Add your own patterns:
+
+```json
+{
+  "privacy": {
+    "excludePaths": [
+      ".env",
+      ".env.*",
+      "*.pem",
+      "secrets/*",
+      "config/production.yml"
+    ]
+  }
+}
+```
+
+Patterns support:
+- Exact filenames: `.env`
+- Wildcards: `*.key`, `.env.*`
+- Path segments: `secrets/*`
+
+## Exclude tools
+
+Prevent specific tools from being logged:
+
+```json
+{
+  "privacy": {
+    "excludeTools": ["WebFetch", "BrowserAction"]
+  }
+}
+```
+
+Use cases:
+- Block logging of web requests (may contain tokens in URLs)
+- Exclude clipboard or screenshot tools
+- Prevent logging of external API calls
+
+## Custom patterns
+
+<Tabs>
+  <Tab title="Configuration">
+    ```json
+    {
+      "privacy": {
+        "mode": "flexible",
+        "customPatterns": [
+          {
+            "pattern": "ACME_API_KEY_[A-Z0-9]{24}",
+            "name": "acme-api-key"
+          },
+          {
+            "pattern": "Bearer [a-f0-9]{64}",
+            "name": "bearer-token"
+          }
+        ]
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Validation">
+    Custom patterns are validated before use:
+
+    ```typescript
+    // daemon/shared/privacy.ts:158-171
+    export function compileCustomPatterns(
+      patterns: Array<{ pattern: string; name: string }>
+    ): RegExp[] {
+      const compiled: RegExp[] = [];
+      for (const { pattern } of patterns) {
+        if (!pattern || pattern.length < 4) continue;
+        if (/^\.\*$|^\.\+$/.test(pattern)) continue; // reject wildcards
+        try {
+          compiled.push(new RegExp(pattern, "g"));
+        } catch {
+          // Invalid regex — skip silently
+        }
+      }
+      return compiled;
+    }
+    ```
+
+    **Rejected patterns:**
+    - `.*` (wildcard everything)
+    - `.+` (matches all)
+    - Patterns shorter than 4 characters
+    - Invalid regex syntax
+  </Tab>
+</Tabs>
+
+## Egress kill switch
+
+If compression is enabled, LongMem applies a **second redaction pass** before sending data to the LLM:
+
+```typescript
+// daemon/compression-worker.ts:73-92
+let egressInput = obs.tool_input || "{}";
+let egressOutput = obs.tool_output || "";
+
+if (this.privacyMode !== "none") {
+  egressInput = redactSecrets(egressInput);
+  egressOutput = redactSecrets(egressOutput);
+  if (this.compiledCustom.length > 0) {
+    egressInput = redactWithCustomPatterns(egressInput, this.compiledCustom);
+    egressOutput = redactWithCustomPatterns(egressOutput, this.compiledCustom);
+  }
+}
+
+// Kill switch: quarantine if high-risk patterns survive
+if (this.privacyMode !== "none" && containsHighRiskPattern(egressOutput)) {
+  updateCompressionJob(job.id, "quarantined", "high_risk_pattern_detected_post_redaction");
+  continue;
+}
+```
+
+**High-risk patterns** (never sent to LLMs):
+- Private keys (`-----BEGIN PRIVATE KEY-----`)
+- Long JWTs (>20 chars)
+- Cloud provider keys (`sk-ant-`, `sk-or-v1-`, `AKIA`)
+- Database connection strings with passwords
+
+If these patterns are detected after redaction, the job is **quarantined** and logged for manual review.
+
+## Configuration examples
+
+### Minimal (local-only)
+```json
+{
+  "privacy": {
+    "mode": "safe"
+  },
+  "compression": {
+    "enabled": false
+  }
+}
+```
+
+### Paranoid mode
+```json
+{
+  "privacy": {
+    "mode": "flexible",
+    "redactSecrets": true,
+    "excludePaths": [
+      ".env*",
+      "*.key",
+      "*.pem",
+      "credentials.json",
+      "secrets/*",
+      "config/prod*"
+    ],
+    "excludeTools": ["WebFetch", "bash"],
+    "customPatterns": [
+      {
+        "pattern": "[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}",
+        "name": "credit-card"
+      }
+    ]
+  }
+}
+```
+
+### Enterprise
+```json
+{
+  "privacy": {
+    "mode": "flexible",
+    "maxInputSize": 2048,
+    "maxOutputSize": 4096,
+    "excludePaths": [
+      ".env*",
+      "*.pem",
+      "vault/*",
+      "secrets.yml"
+    ],
+    "customPatterns": [
+      {
+        "pattern": "ORG_TOKEN_[A-Z0-9]{32}",
+        "name": "org-token"
+      }
+    ]
+  },
+  "compression": {
+    "enabled": true,
+    "provider": "local"
+  }
+}
+```
+
+## Size limits
+
+Prevent huge tool outputs from bloating your database:
+
+```json
+{
+  "privacy": {
+    "maxInputSize": 4096,   // Default: 4 KB
+    "maxOutputSize": 8192   // Default: 8 KB
+  }
+}
+```
+
+Data is truncated **after** secret redaction, with a marker:
+```
+...[truncated 12340 chars]
+```
+
+## Debugging privacy
+
+Check what data is actually stored:
+
+```bash
+longmem export --format json --days 1 > debug.json
+```
+
+Look for:
+- `[REDACTED]` markers where secrets were removed
+- `[EXCLUDED: path matched denylist]` for blocked files
+- No plaintext API keys or tokens
+
+<Note>
+If you find a secret type that isn't being caught, open an issue on GitHub or add a custom pattern.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Compression" icon="compress" href="/concepts/compression">
+    Enable AI-powered memory summaries
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration/settings">
+    Full settings.json reference
+  </Card>
+</CardGroup>

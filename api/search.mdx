@@ -1,0 +1,212 @@
+---
+title: "GET /search"
+description: "Search observations, sessions, and user data with full-text search"
+---
+
+## Overview
+
+The `/search` endpoint performs full-text search across observations, sessions, or user data. It supports multiple search types and returns compact results optimized for MCP progressive disclosure.
+
+## Authentication
+
+This endpoint requires a valid authentication token if configured:
+
+```bash
+Authorization: Bearer YOUR_AUTH_TOKEN
+```
+
+## Request
+
+```bash
+GET /search?q=query&type=observations&project=my-project&limit=10
+```
+
+<ParamField query="q" type="string" default="">
+  Search query string. Empty query returns recent observations ordered by recency with decay weighting.
+</ParamField>
+
+<ParamField query="type" type="string" default="observations">
+  Type of search to perform:
+  - `"observations"`: Search tool observations (default)
+  - `"sessions"`: Search session prompts and metadata
+  - `"user"`: Search user-provided observations
+  - `"recent"`: Get recent observations with decay scoring (ignores query)
+</ParamField>
+
+<ParamField query="project" type="string">
+  Filter results to a specific project. If omitted, searches across all projects.
+</ParamField>
+
+<ParamField query="limit" type="number" default="5">
+  Maximum number of results to return. Must be between 1 and 100.
+</ParamField>
+
+## Response
+
+<ResponseField name="results" type="array" required>
+  Array of compact search results. Each result contains:
+</ResponseField>
+
+<ResponseField name="results[].id" type="number" required>
+  Database ID of the observation or session.
+</ResponseField>
+
+<ResponseField name="results[].date" type="string" required>
+  Creation date in YYYY-MM-DD format.
+</ResponseField>
+
+<ResponseField name="results[].tool" type="string" required>
+  Tool name (for observations) or session status (for sessions).
+</ResponseField>
+
+<ResponseField name="results[].summary" type="string" required>
+  Compressed summary or first user prompt (truncated to 120 characters).
+</ResponseField>
+
+<ResponseField name="results[].files" type="string | null">
+  Comma-separated list of referenced file paths (if available).
+</ResponseField>
+
+<ResponseField name="results[].rank" type="number" required>
+  Weighted ranking score (higher is more relevant). 0 for non-scored results.
+</ResponseField>
+
+<ResponseField name="total" type="number" required>
+  Total number of results returned (always matches `results.length`).
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if the request failed.
+</ResponseField>
+
+## Examples
+
+### Search Observations
+
+```bash
+curl "http://localhost:3000/search?q=authentication&project=my-project&limit=5" \
+  -H "Authorization: Bearer your-token-here"
+```
+
+**Response:**
+
+```json
+{
+  "results": [
+    {
+      "id": 1847,
+      "date": "2026-01-15",
+      "tool": "read",
+      "summary": "Read authentication middleware implementation with JWT validation and session management",
+      "files": "src/auth/middleware.ts",
+      "rank": 8.42
+    },
+    {
+      "id": 1823,
+      "date": "2026-01-14",
+      "tool": "edit",
+      "summary": "Updated authentication flow to support OAuth2 providers",
+      "files": "src/auth/oauth.ts",
+      "rank": 7.15
+    }
+  ],
+  "total": 2
+}
+```
+
+### Search Sessions
+
+```bash
+curl "http://localhost:3000/search?q=bug%20fix&type=sessions&limit=3" \
+  -H "Authorization: Bearer your-token-here"
+```
+
+**Response:**
+
+```json
+{
+  "results": [
+    {
+      "id": 42,
+      "date": "2026-01-15",
+      "tool": "completed",
+      "summary": "Fix the login redirect bug that occurs after password reset",
+      "files": null,
+      "rank": 5.23
+    }
+  ],
+  "total": 1
+}
+```
+
+### Get Recent Observations
+
+```bash
+curl "http://localhost:3000/search?type=recent&project=my-project&limit=10" \
+  -H "Authorization: Bearer your-token-here"
+```
+
+**Response:**
+
+```json
+{
+  "results": [
+    {
+      "id": 1891,
+      "date": "2026-01-15",
+      "tool": "bash",
+      "summary": "Ran test suite with updated authentication tests",
+      "files": null,
+      "rank": 9.87
+    },
+    {
+      "id": 1890,
+      "date": "2026-01-15",
+      "tool": "edit",
+      "summary": "Fixed typo in error message for invalid credentials",
+      "files": "src/auth/errors.ts",
+      "rank": 9.45
+    }
+  ],
+  "total": 2
+}
+```
+
+### Empty Query (Recency-Based)
+
+```bash
+curl "http://localhost:3000/search?project=my-project" \
+  -H "Authorization: Bearer your-token-here"
+```
+
+**Response:**
+
+```json
+{
+  "results": [
+    {
+      "id": 1891,
+      "date": "2026-01-15",
+      "tool": "bash",
+      "summary": "Ran test suite with updated authentication tests",
+      "files": null,
+      "rank": 9.87
+    }
+  ],
+  "total": 1
+}
+```
+
+## Status Codes
+
+- **200 OK**: Search completed successfully
+- **401 Unauthorized**: Missing or invalid authentication token
+- **500 Internal Server Error**: Search query failed
+
+## Use Cases
+
+- Find relevant past observations for context injection
+- Search session history by user prompts
+- Discover similar work across projects
+- Retrieve recent activity with time-decay weighting
+- Browse user-provided documentation and notes

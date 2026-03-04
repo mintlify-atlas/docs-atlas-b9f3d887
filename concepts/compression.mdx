@@ -1,0 +1,558 @@
+---
+title: "Compression"
+description: "AI-powered memory compression and summaries"
+---
+
+## Overview
+
+Compression is an **optional feature** that uses an LLM to generate concise summaries of tool observations. These summaries improve search relevance and help your AI assistant recall past work more effectively.
+
+<Info>
+LongMem works fully without compression — you just won't get AI-powered summaries. Search will fall back to raw tool outputs.
+</Info>
+
+## Why compression?
+
+**Without compression:**
+- Raw tool inputs/outputs are stored verbatim
+- Search uses full-text matching on potentially noisy data
+- Large observations (e.g. file diffs) are hard to summarize
+
+**With compression:**
+- LLM extracts essential information (what changed, why)
+- Search ranks by semantic relevance
+- Concepts/tags enable topic-based retrieval
+- Context injection is more precise
+
+### Example compression
+
+**Input (raw tool output):**
+```
+$ git diff src/server.ts
+- app.get('/api/users', async (req, res) => {
++ app.get('/api/users', rateLimit({ max: 100 }), async (req, res) => {
+    const users = await db.query('SELECT * FROM users');
+    res.json(users);
+  });
+```
+
+**Output (compressed summary):**
+```json
+{
+  "summary": "Added rate limiting middleware to /api/users endpoint",
+  "type": "feature",
+  "files": ["src/server.ts"],
+  "concepts": ["rate-limiting", "api", "middleware"]
+}
+```
+
+## Supported providers
+
+LongMem uses the OpenAI-compatible API format, supporting:
+
+```typescript
+// daemon/config.ts:49-54
+const PROVIDERS: Record<string, string> = {
+  openrouter: "https://openrouter.ai/api/v1",
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+  local: "http://localhost:11434/v1",
+};
+```
+
+### Provider comparison
+
+| Provider | Cost | Speed | Privacy | Best for |
+|----------|------|-------|---------|----------|
+| **OpenRouter** | $0.10/1M tokens | Fast | Data sent to cloud | Cheap, reliable |
+| **OpenAI** | $0.15/1M tokens | Fast | Data sent to cloud | High quality |
+| **Anthropic** | $0.25/1M tokens | Fast | Data sent to cloud | Best summaries |
+| **Local (Ollama)** | Free | Slow | 100% local | Max privacy |
+
+<Warning>
+If you enable compression with a cloud provider, **tool outputs are sent to that LLM**. Data is redacted twice (ingress + egress), but if you need absolute privacy, use `local` or disable compression.
+</Warning>
+
+## Configuration
+
+### OpenRouter (recommended)
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.1-8b-instruct",
+    "apiKey": "sk-or-v1-..."
+  }
+}
+```
+
+**Get an API key:** [openrouter.ai/keys](https://openrouter.ai/keys)
+
+**Recommended models:**
+- `meta-llama/llama-3.1-8b-instruct` (cheap, fast)
+- `openai/gpt-4o-mini` (better summaries)
+- `anthropic/claude-3-haiku` (best quality)
+
+### OpenAI
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKey": "sk-..."
+  }
+}
+```
+
+### Anthropic
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "anthropic",
+    "model": "claude-3-haiku-20240307",
+    "apiKey": "sk-ant-..."
+  }
+}
+```
+
+### Local (Ollama)
+
+**Zero cost, full privacy, slower.**
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull a model
+ollama pull llama3.1:8b
+```
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "local",
+    "model": "llama3.1:8b",
+    "baseURL": "http://localhost:11434/v1"
+  }
+}
+```
+
+<Note>
+Local compression requires ~8 GB RAM and adds 2-5 seconds per observation. Use for small projects or when privacy is critical.
+</Note>
+
+## Advanced settings
+
+### Rate limiting
+
+Prevent API quota exhaustion:
+
+```json
+{
+  "compression": {
+    "maxPerMinute": 10,
+    "maxConcurrent": 1
+  }
+}
+```
+
+**maxPerMinute** — Requests per minute (default: 10)
+
+**maxConcurrent** — Parallel compression jobs (default: 1)
+
+### Circuit breaker
+
+Automatic backoff when the API is down:
+
+```json
+{
+  "compression": {
+    "circuitBreakerThreshold": 5,
+    "circuitBreakerCooldownMs": 60000,
+    "circuitBreakerMaxCooldownMs": 300000
+  }
+}
+```
+
+**How it works:**
+
+```typescript
+// daemon/compression-worker.ts:172-186
+private openCircuit(): void {
+  this.circuitOpen = true;
+  this.circuitOpenCount++;
+  if (this.circuitTimer) clearTimeout(this.circuitTimer);
+  
+  const baseDelay = this.config.circuitBreakerCooldownMs;
+  const maxDelay = this.config.circuitBreakerMaxCooldownMs || 300000;
+  const delay = Math.min(baseDelay * Math.pow(2, this.circuitOpenCount - 1), maxDelay);
+  
+  this.circuitTimer = setTimeout(() => {
+    this.circuitOpen = false;
+    this.consecutiveFailures = 0;
+    this.processQueue();
+  }, delay);
+}
+```
+
+After 5 consecutive failures:
+1. Circuit opens (compression pauses)
+2. Waits 60 seconds
+3. Retries (exponential backoff: 60s → 120s → 240s)
+4. Max cooldown: 5 minutes
+
+### Retry logic
+
+```json
+{
+  "compression": {
+    "maxRetries": 3,
+    "timeoutSeconds": 30
+  }
+}
+```
+
+**maxRetries** — Attempts before marking job as failed (default: 3)
+
+**timeoutSeconds** — HTTP timeout per request (default: 30s)
+
+**Error handling:**
+
+```typescript
+// daemon/compression-worker.ts:139-156
+private handleError(job: { id: number; attempts: number }, error: unknown): void {
+  const errorMsg = error instanceof Error ? error.message : String(error);
+  const status = (error as any)?.status;
+
+  if (status === 401 || status === 403) {
+    // Auth error — don't retry
+    updateCompressionJob(job.id, "failed", `Auth error: ${errorMsg}`);
+    this.consecutiveFailures += this.config.circuitBreakerThreshold; // Trip immediately
+  } else if (job.attempts >= this.config.maxRetries) {
+    updateCompressionJob(job.id, "failed", `Max retries: ${errorMsg}`);
+  } else {
+    updateCompressionJob(job.id, "pending", errorMsg);
+  }
+
+  this.consecutiveFailures++;
+  if (this.consecutiveFailures >= this.config.circuitBreakerThreshold) {
+    this.openCircuit();
+  }
+}
+```
+
+- **401/403 errors** → Circuit trips immediately (bad API key)
+- **Timeout/network errors** → Retry up to `maxRetries`
+- **Max retries exceeded** → Job marked as failed
+
+## Idle detection
+
+Compression only runs when you stop typing:
+
+```json
+{
+  "compression": {
+    "idleThresholdSeconds": 5
+  }
+}
+```
+
+Every API call resets the idle timer. After 5 seconds of inactivity, the compression worker processes the queue.
+
+```typescript
+// daemon/server.ts:131-134
+const idleDetector = new IdleDetector(
+  config.compression.idleThresholdSeconds * 1000,
+  () => worker.processQueue()
+);
+```
+
+This prevents blocking your workflow during active coding sessions.
+
+## Compression prompt
+
+The LLM receives this system prompt:
+
+```typescript
+// daemon/compression-sdk.ts:4-12
+const COMPRESS_PROMPT = `You are a memory compression engine. Analyze tool usage and extract essential, reusable knowledge.
+
+Given tool execution data, output a JSON object with:
+- summary: One clear sentence about what happened (max 100 chars)
+- type: One of: decision, bugfix, feature, refactor, discovery, pattern, change, note
+- files: Array of file paths referenced (max 5)
+- concepts: Array of key concepts/tags (max 5)
+
+Be extremely concise. Focus on WHAT was learned, not HOW.`;
+```
+
+**User message format:**
+```
+Tool: Edit
+Input: {"file_path": "src/server.ts", "oldString": "...", "newString": "..."}
+Output: File updated successfully. Changes:
+- Added rate limiting middleware
+- Imported express-rate-limit
+```
+
+**LLM response:**
+```json
+{
+  "summary": "Added rate limiting to /api/users endpoint",
+  "type": "feature",
+  "files": ["src/server.ts"],
+  "concepts": ["rate-limiting", "middleware", "api"]
+}
+```
+
+## Privacy guarantees
+
+### Double redaction
+
+Data is sanitized twice:
+
+1. **Ingress gate** (storage) — `daemon/routes.ts:98-105`
+2. **Egress gate** (compression) — `daemon/compression-worker.ts:73-82`
+
+Both passes apply:
+- Secret pattern matching
+- Custom pattern redaction
+- High-risk pattern detection
+
+### Kill switch
+
+If a high-risk pattern survives redaction, the job is quarantined:
+
+```typescript
+// daemon/compression-worker.ts:85-88
+if (this.privacyMode !== "none" && containsHighRiskPattern(egressOutput)) {
+  updateCompressionJob(job.id, "quarantined", "high_risk_pattern_detected_post_redaction");
+  continue;
+}
+```
+
+Quarantined jobs are logged but never sent to the LLM.
+
+### Path exclusion
+
+Files matching `excludePaths` skip compression entirely:
+
+```typescript
+// daemon/compression-worker.ts:95-98
+if (egressOutput === "[EXCLUDED: path matched denylist]") {
+  updateCompressionJob(job.id, "skipped", "path_excluded");
+  continue;
+}
+```
+
+## Monitoring compression
+
+Check compression status:
+
+```bash
+longmem status
+```
+
+**Output:**
+```
+longmem daemon: running
+  PID:        12345
+  Port:       38741
+  Uptime:     3600s
+  Pending:    0 compression jobs
+  Circuit:    closed
+  Idle:       15s
+```
+
+**Pending** — Number of observations waiting for compression
+
+**Circuit** — `OPEN (paused)` if circuit breaker tripped, `closed` otherwise
+
+**Idle** — Seconds since last activity
+
+### Debug compression failures
+
+```bash
+longmem logs -n 100 | grep -i compression
+```
+
+Common errors:
+- `Auth error: 401` → Invalid API key
+- `Compression timeout` → Increase `timeoutSeconds`
+- `Max retries` → Network issues or rate limits
+- `quarantined` → High-risk pattern detected (check privacy settings)
+
+## Cost estimation
+
+### Typical usage
+
+- **Observations per day:** 50-200
+- **Tokens per compression:** 200-500
+- **Total tokens per day:** 10K-100K
+
+### Provider costs
+
+| Provider | Model | Cost/day (100 obs) | Cost/month |
+|----------|-------|-------------------|------------|
+| OpenRouter | llama-3.1-8b | $0.01 | $0.30 |
+| OpenRouter | gpt-4o-mini | $0.02 | $0.60 |
+| OpenAI | gpt-4o-mini | $0.03 | $0.90 |
+| Anthropic | claude-3-haiku | $0.05 | $1.50 |
+| Local | llama3.1:8b | Free | Free |
+
+<Info>
+For most users, compression costs &lt;$1/month with OpenRouter.
+</Info>
+
+## Disabling compression
+
+To disable completely:
+
+```json
+{
+  "compression": {
+    "enabled": false
+  }
+}
+```
+
+Or just pause it:
+
+```bash
+# The circuit breaker auto-opens on errors
+longmem status  # Check if circuit is open
+```
+
+Compression will resume automatically after the cooldown period.
+
+## Example configurations
+
+### Minimal (free)
+```json
+{
+  "compression": {
+    "enabled": false
+  }
+}
+```
+
+### Budget-conscious
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.1-8b-instruct",
+    "apiKey": "sk-or-v1-...",
+    "maxPerMinute": 5,
+    "idleThresholdSeconds": 10
+  }
+}
+```
+
+### High-volume
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "openrouter",
+    "model": "openai/gpt-4o-mini",
+    "apiKey": "sk-or-v1-...",
+    "maxConcurrent": 3,
+    "maxPerMinute": 30,
+    "idleThresholdSeconds": 3
+  }
+}
+```
+
+### Privacy-first
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "local",
+    "model": "llama3.1:8b",
+    "baseURL": "http://localhost:11434/v1",
+    "maxConcurrent": 1,
+    "timeoutSeconds": 60
+  }
+}
+```
+
+### Enterprise (Anthropic)
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "anthropic",
+    "model": "claude-3-haiku-20240307",
+    "apiKey": "sk-ant-...",
+    "maxConcurrent": 2,
+    "maxPerMinute": 20,
+    "circuitBreakerThreshold": 3,
+    "maxRetries": 5
+  }
+}
+```
+
+## Troubleshooting
+
+### Compression not starting
+
+1. Check if enabled: `cat ~/.longmem/settings.json | grep enabled`
+2. Verify API key is set
+3. Check idle threshold: `longmem status` → Idle should be >5s
+4. Look for errors: `longmem logs -n 50`
+
+### Circuit breaker stuck open
+
+```bash
+# Check status
+longmem status
+
+# View recent errors
+longmem logs -n 100 | grep -i circuit
+
+# Common fixes:
+# 1. Invalid API key → Update settings.json
+# 2. Rate limit → Reduce maxPerMinute
+# 3. Provider outage → Wait for cooldown (auto-retries)
+```
+
+### Summaries are low quality
+
+Try a better model:
+- OpenRouter: Switch to `openai/gpt-4o-mini`
+- Anthropic: Use `claude-3-haiku`
+- Local: Pull a larger model (e.g., `llama3.1:70b`)
+
+### High API costs
+
+```json
+{
+  "compression": {
+    "maxPerMinute": 3,
+    "idleThresholdSeconds": 15
+  }
+}
+```
+
+Or switch to a cheaper model (llama-3.1-8b is 5x cheaper than GPT-4o-mini).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Privacy modes" icon="shield" href="/concepts/privacy-modes">
+    Configure secret redaction
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration/settings">
+    Full settings.json reference
+  </Card>
+</CardGroup>

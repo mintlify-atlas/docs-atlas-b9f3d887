@@ -1,0 +1,241 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for LongMem
+---
+
+## Common Issues
+
+### Installer Hangs
+
+If the interactive installer prompts are stuck, use the non-interactive mode:
+
+```bash
+curl -fsSL https://github.com/clouitreee/LongMem/releases/latest/download/install.sh | bash -s -- --yes
+```
+
+### Config Errors
+
+LongMem automatically backs up invalid JSON configurations and repairs them. If you encounter config issues, check:
+
+```bash
+cat ~/.longmem/settings.json
+```
+
+Valid configuration format:
+
+```json
+{
+  "daemon": { "port": 38741 },
+  "privacy": { "mode": "safe", "redactSecrets": true },
+  "autoContext": { "enabled": true },
+  "compression": {
+    "enabled": false,
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.1-8b-instruct",
+    "apiKey": ""
+  }
+}
+```
+
+### Daemon Won't Start
+
+**Check if daemon is already running:**
+
+```bash
+longmem status
+```
+
+**Port already in use (EADDRINUSE):**
+
+If you see an error like `Port 38741 already in use`, another process is using the port:
+
+```bash
+# Find process using the port
+lsof -ti:38741
+
+# Kill the process
+kill -9 $(lsof -ti:38741)
+```
+
+Then restart the daemon:
+
+```bash
+longmem start
+```
+
+**Change the default port:**
+
+Edit `~/.longmem/settings.json` and modify the `daemon.port` value:
+
+```json
+{
+  "daemon": { "port": 38742 }
+}
+```
+
+### Stale PID File
+
+If the daemon reports a stale PID file, the process may have crashed without cleaning up:
+
+```bash
+longmem status
+```
+
+You'll see:
+```
+longmem daemon: stopped
+  Stale PID file: ~/.longmem/longmemd.pid (pid 12345, process dead)
+```
+
+**Automatic cleanup:** LongMem automatically removes stale PID files from daemon/server.ts:33-46:
+- Checks if process is alive
+- Removes PID file if process is dead
+- Retries health check after cleanup
+
+**Manual cleanup:**
+
+```bash
+rm ~/.longmem/longmemd.pid
+longmem start
+```
+
+## Diagnostic Commands
+
+### Check Daemon Status
+
+```bash
+longmem status
+```
+
+Shows:
+- PID (process ID)
+- Port number
+- Uptime in seconds
+- Pending compression jobs
+- Circuit breaker status
+- Idle time
+- Service management (systemd/launchd or manual)
+
+### View Logs
+
+```bash
+longmem logs -n 50
+```
+
+Logs are stored in `~/.longmem/logs/`
+
+### Check Memory Statistics
+
+```bash
+longmem stats
+```
+
+Shows:
+- Total observations stored
+- Compressed vs uncompressed
+- Database size
+
+### Test Health Endpoint
+
+```bash
+curl http://127.0.0.1:38741/health
+```
+
+Should return:
+```json
+{"status":"ok","uptime":123}
+```
+
+### Manual Shutdown
+
+If `longmem stop` doesn't work:
+
+```bash
+# Try HTTP shutdown
+curl -X POST http://127.0.0.1:38741/shutdown
+
+# Force kill by PID
+cat ~/.longmem/longmemd.pid
+kill -15 <pid>
+
+# Force kill by process name
+pkill -f longmemd
+```
+
+## Privacy Mode Issues
+
+### Warning: Privacy Mode 'none'
+
+If you see:
+```
+[longmem] WARNING: Privacy mode is 'none' — secrets will NOT be redacted
+```
+
+This means secrets won't be redacted before storage or compression. Only use this in local-only setups.
+
+**Change privacy mode:**
+
+Edit `~/.longmem/settings.json`:
+
+```json
+{
+  "privacy": {
+    "mode": "safe",
+    "redactSecrets": true
+  }
+}
+```
+
+Available modes:
+- `safe` - Redacts common secrets + blocks sensitive files
+- `flexible` - Safe + custom regex patterns
+- `none` - No redaction (use only for local-only setups)
+
+## Service Management
+
+### systemd (Linux)
+
+**Check service status:**
+```bash
+systemctl --user status longmem.service
+```
+
+**View service logs:**
+```bash
+journalctl --user -u longmem.service -n 50
+```
+
+**Restart service:**
+```bash
+systemctl --user restart longmem.service
+```
+
+### launchd (macOS)
+
+**Check if service is loaded:**
+```bash
+launchctl list | grep longmem
+```
+
+**Unload and reload:**
+```bash
+launchctl unload ~/Library/LaunchAgents/com.longmem.daemon.plist
+launchctl load ~/Library/LaunchAgents/com.longmem.daemon.plist
+```
+
+## Getting Help
+
+If you're still experiencing issues:
+
+1. Check the [GitHub Issues](https://github.com/clouitreee/LongMem/issues)
+2. Run diagnostics:
+   ```bash
+   longmem status
+   lsof -ti:38741
+   cat ~/.longmem/logs/daemon.log
+   ```
+3. Report with:
+   - OS and architecture
+   - LongMem version (`cat ~/.longmem/version`)
+   - Error messages
+   - Output from diagnostic commands

@@ -1,0 +1,106 @@
+---
+title: "Introduction"
+description: "What is LongMem and why use it"
+---
+
+## The Problem: Context Loss Between AI Sessions
+
+Every new AI coding session starts from scratch. Your assistant has no memory of:
+- What you worked on yesterday
+- Bugs you've already fixed
+- Project conventions you've established
+- Code architecture decisions you've made
+
+You waste valuable time re-explaining context that should already be known.
+
+## The Solution: LongMem
+
+**LongMem is a persistent memory daemon that runs locally on your machine.** It records your coding activity and stores it in a private SQLite database, giving your AI assistant long-term memory across sessions.
+
+<Note>
+  **Never repeat yourself to your AI again.** LongMem keeps a private, local memory of your coding work so your assistant always starts with context.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Local-First" icon="lock">
+    All data stays on your machine by default. No cloud uploads unless you explicitly enable compression.
+  </Card>
+  <Card title="Automatic Context" icon="brain">
+    Your AI assistant automatically recalls past sessions without manual prompting.
+  </Card>
+  <Card title="Smart Privacy" icon="shield">
+    Built-in secret redaction protects sensitive data like API keys and credentials.
+  </Card>
+  <Card title="Zero Manual Work" icon="bolt">
+    No manual note-taking. LongMem hooks into your AI assistant automatically.
+  </Card>
+</CardGroup>
+
+## What LongMem Stores
+
+**Stored locally in `~/.longmem/memory.db`:**
+- User prompts to the AI
+- Commands executed by the AI
+- Tool outputs (after redaction)
+- File references and changes
+
+**Never uploaded** unless you explicitly enable compression with a cloud provider.
+
+## How It Works
+
+LongMem integrates seamlessly with Claude Code and OpenCode through hooks:
+
+```
+Claude Code / OpenCode
+        |
+      hooks
+        v
+   +------------+
+   |  longmemd  |  (local daemon)
+   +------------+
+        |
+     SQLite DB
+        v
+  ~/.longmem/memory.db
+```
+
+1. **Your AI assistant runs commands** - LongMem hooks capture the activity
+2. **Events are sent to the daemon** - Running locally on port 38741
+3. **Data is stored in SQLite** - Encrypted at rest, searchable, exportable
+4. **AI queries memory via MCP** - Automatic context retrieval in future sessions
+
+## Privacy Modes
+
+LongMem offers three privacy levels:
+
+| Mode | Behavior |
+|------|----------|
+| `safe` | Redacts common secrets + blocks sensitive files (recommended) |
+| `flexible` | Safe mode + custom regex patterns for domain-specific secrets |
+| `none` | No redaction (for air-gapped or fully trusted environments) |
+
+<Warning>
+  Even in `safe` mode, review your `~/.longmem/memory.db` periodically to ensure no sensitive data was captured.
+</Warning>
+
+## Optional Compression
+
+Compression creates short summaries of past sessions using an LLM, improving recall and search relevance.
+
+- **Without compression:** LongMem works fully, but may return raw verbose logs
+- **With compression:** Better semantic search, requires API key (OpenRouter, OpenAI, Anthropic, or local Ollama)
+
+Compression is **optional** and disabled by default.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install LongMem on macOS or Linux in 2 minutes
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get LongMem running in 5 minutes
+  </Card>
+</CardGroup>

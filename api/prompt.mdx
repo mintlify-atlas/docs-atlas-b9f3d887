@@ -1,0 +1,186 @@
+---
+title: "POST /prompt"
+description: "Record user prompts and retrieve auto-injected context"
+---
+
+## Overview
+
+The `/prompt` endpoint records user prompts in a session and optionally returns relevant context from past observations. It supports automatic context injection based on topic changes and first-prompt detection.
+
+## Authentication
+
+This endpoint requires a valid authentication token if configured:
+
+```bash
+Authorization: Bearer YOUR_AUTH_TOKEN
+```
+
+## Request
+
+```bash
+POST /prompt
+Content-Type: application/json
+```
+
+<ParamField body="session_id" type="string" default="default">
+  Unique identifier for the AI conversation session.
+</ParamField>
+
+<ParamField body="text" type="string" required>
+  The user's prompt text. Empty or whitespace-only prompts are skipped.
+</ParamField>
+
+<ParamField body="project" type="string" default="default">
+  Project identifier for scoping context retrieval.
+</ParamField>
+
+<ParamField body="directory" type="string" default="">
+  Working directory path for the session.
+</ParamField>
+
+<ParamField body="with_context" type="boolean" default="false">
+  Whether to retrieve and return relevant context from past observations.
+</ParamField>
+
+## Response
+
+<ResponseField name="status" type="string" required>
+  Always returns `"ok"` for valid requests.
+</ResponseField>
+
+<ResponseField name="context" type="string | null">
+  Formatted context block to inject into the prompt (only when `with_context: true`).
+</ResponseField>
+
+<ResponseField name="autoinject" type="boolean">
+  Whether context should be automatically injected into the prompt.
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  Reason for context decision:
+  - `"disabled"`: Auto-context is disabled in config
+  - `"fts"`: Context retrieved via full-text search
+  - `"recency"`: Context retrieved by recency
+  - `"empty"`: No relevant context found
+  - `"quarantined"`: Context blocked by safety filters
+  - `"same_topic"`: Topic unchanged, no new context needed
+  - `"timeout"`: Context retrieval exceeded timeout
+  - `"error"`: Context retrieval failed
+</ResponseField>
+
+<ResponseField name="entries" type="number">
+  Number of observations included in the context.
+</ResponseField>
+
+<ResponseField name="bytes_injected" type="number">
+  Size of the context block in bytes.
+</ResponseField>
+
+<ResponseField name="topic_changed" type="boolean">
+  Whether a topic change was detected (only for non-first prompts).
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if the request failed.
+</ResponseField>
+
+## Example
+
+### Without Context
+
+```bash
+curl -X POST http://localhost:3000/prompt \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token-here" \
+  -d '{
+    "session_id": "sess_abc123",
+    "text": "What files are in the project?",
+    "project": "my-project",
+    "with_context": false
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok"
+}
+```
+
+### With Context (First Prompt)
+
+```bash
+curl -X POST http://localhost:3000/prompt \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token-here" \
+  -d '{
+    "session_id": "sess_new456",
+    "text": "Help me debug the authentication flow",
+    "project": "my-project",
+    "with_context": true
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "context": "<longmem-context project=\"my-project\">\n- [2026-01-14] **bash**: Reviewed auth.ts file structure\n- [2026-01-13] **read**: Read JWT token validation logic\n- [2026-01-12] **edit**: Fixed session timeout configuration\n</longmem-context>",
+  "autoinject": true,
+  "reason": "fts",
+  "entries": 3,
+  "bytes_injected": 245
+}
+```
+
+### With Context (Topic Change)
+
+```bash
+curl -X POST http://localhost:3000/prompt \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token-here" \
+  -d '{
+    "session_id": "sess_abc123",
+    "text": "Now help me with the database migrations",
+    "project": "my-project",
+    "with_context": true
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "context": "<longmem-context project=\"my-project\">\n- [2026-01-10] **bash**: Ran database migration scripts\n- [2026-01-09] **read**: Reviewed migration schema changes\n</longmem-context>",
+  "autoinject": true,
+  "reason": "fts",
+  "topic_changed": true
+}
+```
+
+## Auto-Context Behavior
+
+When `with_context: true` and `autoContext.enabled: true` in config:
+
+1. **First Prompt**: Always attempts to inject session primer with recent observations
+2. **Subsequent Prompts**: Injects context only if topic change detected
+3. **Vague Prompts**: Falls back to recency-based retrieval instead of search
+4. **Safety**: Blocks context containing high-risk patterns or secrets
+5. **Timeout**: Returns `null` context if retrieval exceeds `autoContext.timeoutMs`
+
+## Status Codes
+
+- **200 OK**: Prompt recorded successfully
+- **401 Unauthorized**: Missing or invalid authentication token
+- **500 Internal Server Error**: Failed to get or create session
+
+## Use Cases
+
+- Record user prompts for session history
+- Retrieve relevant context from past work
+- Enable topic-aware context injection
+- Build session primers for new conversations
+- Track prompt patterns across projects

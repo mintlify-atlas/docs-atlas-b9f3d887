@@ -1,0 +1,289 @@
+---
+title: Development
+description: Build LongMem from source and contribute to the project
+---
+
+## Requirements
+
+- **Bun** - Required to build from source
+- **macOS** (Apple Silicon or Intel) or **Linux** (x64 / ARM64)
+- **Claude Code** or **OpenCode** installed (for testing)
+
+## Quick Start
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/clouitreee/LongMem.git && cd LongMem
+bun install
+```
+
+## Build Commands
+
+### Build All Components
+
+```bash
+bun run build
+```
+
+This builds:
+- `dist/daemon.js` - Main daemon server
+- `dist/mcp.js` - MCP server
+- `dist/hooks/post-tool.js` - Post-tool hook
+- `dist/hooks/prompt.js` - Prompt hook
+- `dist/hooks/stop.js` - Stop hook
+- `dist/install.js` - Installer script
+- `dist/uninstall.js` - Uninstaller script
+
+### Build OpenCode Plugin
+
+```bash
+bun run build:opencode
+```
+
+Outputs: `dist/plugin.js`
+
+### Build Binaries
+
+Build platform-specific binaries:
+
+```bash
+# Build all supported platforms
+bun run build:binaries
+
+# Or build specific platforms:
+bun run build:binary:linux-arm64
+bun run build:binary:linux-x64
+bun run build:binary:macos-arm64
+bun run build:binary:macos-x64
+bun run build:binary:windows-x64
+```
+
+Binaries are output to `dist/bin/`:
+- `longmem-linux-arm64`
+- `longmem-linux-x64`
+- `longmem-macos-arm64`
+- `longmem-macos-x64`
+- `longmem-windows-x64.exe`
+
+## Development Commands
+
+### Run Daemon in Development Mode
+
+```bash
+bun run dev
+```
+
+Starts the daemon server directly from source without building.
+
+### Run Tests
+
+```bash
+bun test
+```
+
+Runs the test suite in `tests/`
+
+### Install from Source
+
+```bash
+bun run install-plugin
+```
+
+Runs the installer script to set up LongMem from your local build.
+
+## Project Structure
+
+```
+LongMem/
+├── daemon/          # Main daemon server
+│   ├── server.ts    # HTTP server, routes, lifecycle
+│   ├── db.ts        # SQLite database layer
+│   ├── config.ts    # Configuration loading
+│   ├── compression-sdk.ts
+│   ├── compression-worker.ts
+│   └── idle-detector.ts
+│
+├── cli/             # CLI commands (longmem start/stop/status)
+│   └── commands.ts
+│
+├── hooks/           # Client integration hooks
+│   ├── post-tool.ts # Captures tool outputs
+│   ├── prompt.ts    # Captures prompts
+│   └── stop.ts      # Session cleanup
+│
+├── mcp/             # Model Context Protocol server
+│   └── server.ts    # MCP tools (mem_search, mem_timeline, mem_get)
+│
+├── opencode/        # OpenCode plugin
+│   └── plugin.ts
+│
+├── shared/          # Shared utilities
+│   ├── constants.ts # Paths, ports, defaults
+│   ├── detect.ts    # Environment detection
+│   ├── couple.ts    # Client configuration
+│   ├── decouple.ts  # Client cleanup
+│   ├── verify.ts    # Installation verification
+│   ├── ecosystem.ts # Project scanning
+│   └── process-utils.ts
+│
+├── install.ts       # Installer script
+├── uninstall.ts     # Uninstaller script
+├── longmem.ts       # CLI entry point
+└── package.json     # Dependencies and scripts
+```
+
+### Key Directories
+
+**`daemon/`** - Core server that stores observations, handles compression, and serves the API
+
+**`cli/`** - Command-line interface for controlling the daemon (`longmem start`, `longmem stop`, etc.)
+
+**`hooks/`** - Integration hooks that capture prompts and tool outputs from Claude Code/OpenCode
+
+**`mcp/`** - Model Context Protocol server that provides memory tools to the LLM
+
+**`opencode/`** - OpenCode-specific plugin integration
+
+**`shared/`** - Shared utilities for configuration, detection, and system integration
+
+## Configuration
+
+Development configuration is stored in `~/.longmem/settings.json`:
+
+```json
+{
+  "daemon": { 
+    "port": 38741,
+    "authToken": ""
+  },
+  "privacy": { 
+    "mode": "safe",
+    "redactSecrets": true,
+    "customPatterns": []
+  },
+  "autoContext": { 
+    "enabled": true 
+  },
+  "compression": {
+    "enabled": false,
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.1-8b-instruct",
+    "apiKey": "",
+    "maxConcurrent": 1,
+    "idleThresholdSeconds": 5,
+    "maxPerMinute": 10
+  }
+}
+```
+
+## Testing Your Changes
+
+1. **Build the project:**
+   ```bash
+   bun run build
+   ```
+
+2. **Install locally:**
+   ```bash
+   bun run install-plugin
+   ```
+
+3. **Start the daemon:**
+   ```bash
+   bun run dev
+   ```
+
+4. **Test with Claude Code or OpenCode:**
+   Start a new session and verify that prompts and tool outputs are captured.
+
+5. **Check the database:**
+   ```bash
+   sqlite3 ~/.longmem/memory.db "SELECT COUNT(*) FROM observations;"
+   ```
+
+## Contributing
+
+### Pull Requests
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and test thoroughly
+4. Run tests: `bun test`
+5. Build: `bun run build`
+6. Commit with clear messages
+7. Push to your fork
+8. Open a pull request on [GitHub](https://github.com/clouitreee/LongMem)
+
+### Code Style
+
+- Use TypeScript for all new code
+- Follow existing naming conventions
+- Add comments for complex logic
+- Keep functions focused and modular
+
+### Testing
+
+All new features should include tests in the `tests/` directory:
+
+```bash
+bun test
+```
+
+## Debugging
+
+### Enable Verbose Logging
+
+Edit `daemon/server.ts` to add debug logging:
+
+```typescript
+console.log("[debug]", data);
+```
+
+### Inspect Database
+
+```bash
+sqlite3 ~/.longmem/memory.db
+```
+
+Useful queries:
+```sql
+-- List all tables
+.tables
+
+-- Count observations
+SELECT COUNT(*) FROM observations;
+
+-- Recent observations
+SELECT id, type, created_at FROM observations 
+ORDER BY created_at DESC LIMIT 10;
+
+-- Check compression status
+SELECT compressed, COUNT(*) FROM observations 
+GROUP BY compressed;
+```
+
+### Monitor HTTP Traffic
+
+```bash
+# Watch daemon logs
+tail -f ~/.longmem/logs/daemon.log
+
+# Test endpoints
+curl http://127.0.0.1:38741/health
+curl http://127.0.0.1:38741/status
+curl http://127.0.0.1:38741/stats
+```
+
+## Release Process
+
+1. Update version in `package.json`
+2. Build all binaries: `bun run build:binaries`
+3. Test on all platforms
+4. Tag release: `git tag v1.0.0`
+5. Push tag: `git push origin v1.0.0`
+6. GitHub Actions will create the release automatically
+
+## License
+
+MIT - See [LICENSE](https://github.com/clouitreee/LongMem/blob/main/LICENSE)

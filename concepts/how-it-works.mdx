@@ -1,0 +1,200 @@
+---
+title: "How it works"
+description: "LongMem architecture and data flow"
+---
+
+## Architecture overview
+
+LongMem is a **local-first persistent memory system** for AI coding assistants. It runs as a lightweight daemon that captures your coding activity, stores it in SQLite, and makes it searchable for future sessions.
+
+### Core components
+
+```
+Claude Code / OpenCode
+        |
+      hooks
+        v
+   +------------+
+   |  longmemd  |  (local daemon)
+   +------------+
+        |
+     SQLite DB
+        v
+  ~/.longmem/memory.db
+```
+
+The daemon consists of four key subsystems:
+
+1. **HTTP Server** (`daemon/server.ts`) — REST API for ingestion and retrieval
+2. **Privacy Layer** — Redacts secrets before storage or compression
+3. **Compression Worker** — Optional AI-powered summarization
+4. **Idle Detector** — Triggers compression when you stop typing
+
+## Data flow
+
+### 1. Capture phase
+
+When you interact with your AI assistant, LongMem hooks capture:
+
+- **User prompts** — What you asked the AI to do
+- **Tool calls** — Commands executed (file edits, bash, searches)
+- **Tool outputs** — Results from those operations
+- **File references** — Paths mentioned in tool inputs
+
+Example tool observation:
+```json
+{
+  "session_id": "abc123",
+  "tool_name": "Edit",
+  "tool_input": { "file_path": "src/server.ts" },
+  "tool_output": "File updated successfully",
+  "prompt_number": 3
+}
+```
+
+### 2. Privacy gate
+
+Before storage, **all data passes through privacy filters** (see [Privacy modes](/concepts/privacy-modes)):
+
+```typescript
+// daemon/routes.ts:98-105
+if (privacyEnabled) {
+  inputStr = redactSecrets(inputStr);
+  outputStr = redactSecrets(outputStr);
+  if (compiledCustom.length > 0) {
+    inputStr = redactWithCustomPatterns(inputStr, compiledCustom);
+    outputStr = redactWithCustomPatterns(outputStr, compiledCustom);
+  }
+}
+```
+
+If a file matches your `excludePaths` list, only metadata is stored — the content is replaced with `[EXCLUDED: path matched denylist]`.
+
+### 3. Storage
+
+Observations are written to SQLite (`~/.longmem/memory.db`):
+
+- **sessions** table — One row per coding session
+- **observations** table — Tool executions with redacted input/output
+- **concepts** table — Extracted tags for semantic search
+- **compression_jobs** table — Queue for AI summaries
+
+### 4. Compression (optional)
+
+If enabled, the compression worker:
+
+1. Waits for idle time (default: 5 seconds)
+2. Fetches pending observations from the queue
+3. **Re-redacts data** before sending to the LLM (egress gate)
+4. Generates a concise summary using AI
+5. Stores summary back in the `observations` table
+
+```typescript
+// daemon/compression-worker.ts:73-82
+let egressInput = obs.tool_input || "{}";
+let egressOutput = obs.tool_output || "";
+
+if (this.privacyMode !== "none") {
+  egressInput = redactSecrets(egressInput);
+  egressOutput = redactSecrets(egressOutput);
+  if (this.compiledCustom.length > 0) {
+    egressInput = redactWithCustomPatterns(egressInput, this.compiledCustom);
+    egressOutput = redactWithCustomPatterns(egressOutput, this.compiledCustom);
+  }
+}
+```
+
+**Kill switch:** If high-risk patterns survive redaction, the job is quarantined and never sent to the LLM.
+
+## Idle detection
+
+The daemon uses an idle detector to trigger compression only when you stop working:
+
+```typescript
+// daemon/idle-detector.ts:12-18
+recordActivity(): void {
+  this.lastActivityTime = Date.now();
+  if (this.idleTimer) clearTimeout(this.idleTimer);
+  this.idleTimer = setTimeout(() => {
+    this.onIdle();
+  }, this.thresholdMs);
+}
+```
+
+- Every API call resets the idle timer
+- After `idleThresholdSeconds` (default: 5s), compression starts
+- This prevents blocking your workflow during active coding
+
+## Auto-context injection
+
+When you start a new session or change topics, LongMem can automatically inject relevant context from past work:
+
+```typescript
+// daemon/routes.ts:171-176
+if (isFirstPrompt) {
+  const searchQuery = isVaguePrompt(cleanText) ? "" : cleanText;
+  const reason = searchQuery ? "fts" : "recency";
+  const entries = searchSessionPrimer(searchQuery, project, autoCtx.maxEntries);
+  // ...
+}
+```
+
+**First prompt:** Injects session primer with relevant past observations
+
+**Subsequent prompts:** Detects topic changes and injects project context
+
+## API endpoints
+
+The daemon exposes a REST API on `localhost:38741` (configurable):
+
+| Endpoint | Method | Purpose |
+|----------|--------|--------|
+| `/observe` | POST | Ingest a tool observation |
+| `/prompt` | POST | Record a user prompt (with optional context) |
+| `/search` | GET | Search observations by query |
+| `/context` | GET | Get formatted context block |
+| `/status` | GET | Daemon health + compression stats |
+| `/export` | GET | Export memory as JSON or Markdown |
+
+## Security model
+
+- **Local-only by default** — No data leaves your machine unless compression is enabled
+- **Optional auth token** — Set `daemon.authToken` to require Bearer authentication
+- **Privacy-first** — Secrets are redacted before storage AND before compression
+- **Path-based exclusion** — Never store content from `.env`, `*.key`, `credentials.json`, etc.
+
+<Note>
+LongMem never sends data to the cloud unless you explicitly enable compression with a remote provider. Even then, data is re-redacted before egress.
+</Note>
+
+## Performance characteristics
+
+- **Startup time:** &lt;100ms
+- **Memory footprint:** ~20-40 MB (idle)
+- **Disk usage:** ~1-5 MB per day of active coding
+- **Query latency:** &lt;50ms for FTS search, &lt;10ms for recency
+
+## What gets compressed?
+
+Compression is **metadata-only**. The raw tool inputs/outputs remain in the database for export and debugging. Summaries are stored in `compressed_summary` and used for search ranking.
+
+Example compression output:
+```json
+{
+  "summary": "Updated server.ts to add rate limiting middleware",
+  "type": "feature",
+  "files": ["src/server.ts"],
+  "concepts": ["rate-limiting", "middleware", "express"]
+}
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Privacy modes" icon="shield" href="/concepts/privacy-modes">
+    Configure secret redaction and data privacy
+  </Card>
+  <Card title="Compression" icon="compress" href="/concepts/compression">
+    Enable AI-powered memory summaries
+  </Card>
+</CardGroup>

@@ -1,0 +1,90 @@
+---
+title: mem_timeline
+description: Get chronological context around a specific observation
+---
+
+## Purpose
+
+`mem_timeline` shows what happened before and after a specific observation, providing temporal context. Use this when you need to understand the sequence of events surrounding a particular memory.
+
+This is useful for understanding:
+- What led up to a specific change or decision
+- What happened as a result of an action
+- The flow of work during a coding session
+
+## Parameters
+
+<ParamField path="observation_id" type="number" required>
+  Observation ID from `mem_search` results
+</ParamField>
+
+<ParamField path="before" type="number" default="3">
+  Number of observations to show before the target (max: 10)
+</ParamField>
+
+<ParamField path="after" type="number" default="3">
+  Number of observations to show after the target (max: 10)
+</ParamField>
+
+## Response Format
+
+Returns a structured timeline with three sections:
+
+**Example response:**
+```
+**Before:**
+  [140] 2026-03-01 | read: Reviewed authentication middleware
+  [141] 2026-03-01 | grep: Searched for login errors
+  [142] 2026-03-01 | edit: Updated error handling in auth.ts
+
+**Target [143]:** bash — Started test suite to verify auth fixes
+Files: tests/auth.test.ts
+
+**After:**
+  [144] 2026-03-01 | read: Checked test results
+  [145] 2026-03-01 | bash: Committed authentication fixes
+  [146] 2026-03-01 | write: Updated documentation
+```
+
+Each entry shows:
+- Observation ID in brackets
+- Date (YYYY-MM-DD)
+- Tool name
+- Compressed summary of the observation
+
+The **Target** section shows the requested observation with additional details like files referenced.
+
+## Usage Example
+
+**Get context around a specific observation:**
+```json
+{
+  "observation_id": 143
+}
+```
+
+**Show more context (broader timeline):**
+```json
+{
+  "observation_id": 143,
+  "before": 5,
+  "after": 5
+}
+```
+
+**Only show what happened before:**
+```json
+{
+  "observation_id": 143,
+  "before": 10,
+  "after": 0
+}
+```
+
+## Tips
+
+- **Use after search**: Get the observation_id from `mem_search` results first
+- **Understand sequences**: Perfect for understanding multi-step debugging or feature development
+- **Adjust window size**: Use larger `before`/`after` values for complex workflows
+- **Session boundaries**: Timeline shows observations in chronological order, even across different days
+- **Invalid IDs**: If the observation_id doesn't exist, you'll get an error message

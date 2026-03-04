@@ -1,0 +1,72 @@
+---
+title: "GET /health"
+description: "Health check endpoint for daemon status monitoring"
+---
+
+## Overview
+
+The `/health` endpoint provides a lightweight health check for the LongMem daemon. It returns daemon uptime and operational status without requiring authentication.
+
+## Authentication
+
+This endpoint is **publicly accessible** and does not require an authentication token.
+
+## Request
+
+```bash
+GET /health
+```
+
+No parameters required.
+
+## Response
+
+<ResponseField name="status" type="string" required>
+  Health status of the daemon. Always returns `"ok"` if the daemon is running.
+</ResponseField>
+
+<ResponseField name="uptime" type="number" required>
+  Daemon uptime in seconds since the process started.
+</ResponseField>
+
+<ResponseField name="pending" type="number" required>
+  Number of pending compression jobs in the worker queue.
+</ResponseField>
+
+<ResponseField name="circuit_open" type="boolean" required>
+  Whether the compression circuit breaker is open (paused). `true` means compression is paused due to errors.
+</ResponseField>
+
+<ResponseField name="idle_ms" type="number" required>
+  Time in milliseconds since the last activity was recorded by the idle detector.
+</ResponseField>
+
+## Example
+
+```bash
+curl http://localhost:3000/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "uptime": 3847,
+  "pending": 2,
+  "circuit_open": false,
+  "idle_ms": 45230
+}
+```
+
+## Status Codes
+
+- **200 OK**: Daemon is healthy and operational
+- **500 Internal Server Error**: Unexpected server error
+
+## Use Cases
+
+- Monitor daemon availability for health checks
+- Verify daemon is running before sending requests
+- Check compression queue status
+- Monitor idle time for auto-shutdown logic

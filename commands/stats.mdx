@@ -1,0 +1,251 @@
+---
+title: longmem stats
+description: View memory statistics from the LongMem daemon
+---
+
+The `longmem stats` command displays statistics about your AI's memory database.
+
+## Syntax
+
+```bash
+longmem stats
+```
+
+This command takes no options or arguments.
+
+## Requirements
+
+The daemon must be running to fetch statistics. If the daemon is stopped, you'll see:
+
+```bash
+$ longmem stats
+Error: Daemon not running. Start with: longmem start
+```
+
+## Output
+
+```bash
+$ longmem stats
+LongMem Statistics
+===================
+Sessions: 42
+Observations: 1,234
+User observations: 156
+Concepts: 89
+Pending compressions: 0
+```
+
+## Statistics Explained
+
+### Sessions
+
+Number of distinct coding sessions tracked. A session represents one continuous period of AI interaction, typically:
+- One terminal session
+- One IDE window
+- One conversation thread
+
+Sessions are created with `session.start` and ended with `session.end`.
+
+**What it means:**
+- Low count (0-10): New installation or infrequent use
+- Medium count (10-100): Regular use over weeks
+- High count (100+): Heavy use over months
+
+### Observations
+
+Total number of individual observations stored, including:
+- Tool uses (file reads, edits, commands)
+- AI responses
+- User messages
+- Hook events
+
+This is the raw, uncompressed event stream.
+
+**What it means:**
+- Typically grows by 100-500 per active session
+- High count indicates lots of AI activity
+- Observations older than 7 days may be compressed into concepts
+
+### User Observations
+
+Subset of observations that are direct user messages (not tool uses or AI responses).
+
+**What it means:**
+- Shows how much the user is directing the AI
+- Typically 10-30% of total observations
+- High ratio indicates user-driven interactions
+- Low ratio indicates autonomous AI work
+
+### Concepts
+
+Number of compressed memory concepts. These are synthesized summaries created by the compression system from related observations.
+
+Examples:
+- "User prefers TypeScript over JavaScript"
+- "Project uses Tailwind for styling"
+- "Debugging CORS issue with API endpoint"
+
+**What it means:**
+- Grows slowly (1-5 per session after compression)
+- Each concept represents multiple related observations
+- More concepts = richer long-term memory
+
+### Pending Compressions
+
+Number of observations waiting to be compressed into concepts.
+
+**What it means:**
+- `0` - All caught up, compression is working
+- `1-10` - Normal during active use
+- `10-50` - Queue building up, compression is lagging
+- `>50` - Compression is failing or circuit breaker is open
+
+**When to worry:**
+- If pending count keeps growing over hours/days
+- Check `longmem logs` for compression errors
+- Verify API keys are configured correctly
+
+## Understanding Your Memory Growth
+
+### Healthy Memory
+
+```bash
+Sessions: 25
+Observations: 3,450
+User observations: 520
+Concepts: 67
+Pending compressions: 2
+```
+
+- Observations per session: ~138 (normal)
+- User ratio: 15% (AI-heavy, normal for coding)
+- Concepts: ~3 per session (good compression)
+- Pending: Very low (compression working)
+
+### Memory Issues
+
+```bash
+Sessions: 10
+Observations: 8,500
+User observations: 340
+Concepts: 3
+Pending compressions: 127
+```
+
+- Observations per session: 850 (very high)
+- Concepts: Very low (compression not working)
+- Pending: High (backlog building up)
+
+**What to do:**
+1. Check logs: `longmem logs`
+2. Look for compression errors
+3. Verify API configuration
+4. Consider restarting daemon
+
+## Querying Stats Directly
+
+You can also fetch stats via HTTP:
+
+```bash
+curl http://127.0.0.1:5939/stats
+```
+
+Returns JSON:
+
+```json
+{
+  "totalSessions": 42,
+  "totalObservations": 1234,
+  "totalUserObservations": 156,
+  "totalConcepts": 89,
+  "pendingCompressions": 0
+}
+```
+
+## Stats in Scripts
+
+You can parse stats in shell scripts:
+
+```bash
+# Get pending count
+PENDING=$(longmem stats | grep "Pending" | awk '{print $3}')
+
+if [ "$PENDING" -gt 50 ]; then
+  echo "Warning: Compression queue is backed up"
+fi
+```
+
+Or use the JSON API:
+
+```bash
+# Get pending count from API
+PENDING=$(curl -s http://127.0.0.1:5939/stats | jq -r '.pendingCompressions')
+
+if [ "$PENDING" -gt 50 ]; then
+  echo "Warning: Compression queue is backed up"
+fi
+```
+
+## Exit Codes
+
+- `0` - Stats retrieved successfully
+- `1` - Daemon not running or error fetching stats
+
+## Troubleshooting
+
+### "Daemon not running" error
+
+```bash
+# Check status
+longmem status
+
+# Start if needed
+longmem start
+
+# Try again
+longmem stats
+```
+
+### Stats show "N/A"
+
+```bash
+Sessions: N/A
+Observations: N/A
+```
+
+This means the `/stats` endpoint returned incomplete data. Check:
+
+```bash
+# View daemon logs
+longmem logs
+
+# Check for database errors
+grep -i error ~/.longmem/logs/daemon.log
+
+# Verify database exists
+ls -lh ~/.longmem/longmem.db
+```
+
+### Stats request times out
+
+If stats take >5 seconds, the request times out. This can happen if:
+- Database is very large (>1GB)
+- Database is locked
+- Daemon is under heavy load
+
+Fix:
+
+```bash
+# Restart daemon
+longmem stop
+longmem start
+
+# Try again
+longmem stats
+```
+
+## Related Commands
+
+- [`longmem status`](/commands/status) - Check daemon status
+- [`longmem export`](/commands/export) - Export full memory data
+- [`longmem logs`](/commands/logs) - View daemon logs

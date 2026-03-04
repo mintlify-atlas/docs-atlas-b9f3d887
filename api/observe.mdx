@@ -1,0 +1,123 @@
+---
+title: "POST /observe"
+description: "Record tool execution observations for memory storage"
+---
+
+## Overview
+
+The `/observe` endpoint records tool execution observations from AI agent interactions. It processes tool inputs and outputs, applies privacy filtering, and stores them for future retrieval and compression.
+
+## Authentication
+
+This endpoint requires a valid authentication token if configured:
+
+```bash
+Authorization: Bearer YOUR_AUTH_TOKEN
+```
+
+## Request
+
+```bash
+POST /observe
+Content-Type: application/json
+```
+
+<ParamField body="session_id" type="string" default="default">
+  Unique identifier for the AI conversation session.
+</ParamField>
+
+<ParamField body="tool_name" type="string" default="unknown" required>
+  Name of the tool that was executed (e.g., `"bash"`, `"read"`, `"edit"`).
+</ParamField>
+
+<ParamField body="tool_input" type="object" default="{}">
+  JSON object containing the tool's input parameters.
+</ParamField>
+
+<ParamField body="tool_output" type="string" default="">
+  String output returned by the tool execution. Large outputs (>100KB) are automatically truncated.
+</ParamField>
+
+<ParamField body="prompt_number" type="number" default="0">
+  Sequential prompt number within the session (0-indexed).
+</ParamField>
+
+<ParamField body="project" type="string" default="default">
+  Project identifier for organizing observations.
+</ParamField>
+
+<ParamField body="directory" type="string" default="">
+  Working directory path where the tool was executed.
+</ParamField>
+
+## Response
+
+<ResponseField name="status" type="string" required>
+  Status of the observation. Values:
+  - `"ok"`: Successfully recorded
+  - `"excluded"`: Filtered by privacy rules
+  - `"skipped"`: Content marked as fully private
+</ResponseField>
+
+<ResponseField name="observation_id" type="number">
+  Database ID of the created observation (only present when status is `"ok"` or `"excluded"`).
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  Reason for exclusion or skipping (e.g., `"tool_excluded"`, `"path_denylist"`, `"private"`).
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if the request failed.
+</ResponseField>
+
+## Example
+
+```bash
+curl -X POST http://localhost:3000/observe \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token-here" \
+  -d '{
+    "session_id": "sess_abc123",
+    "tool_name": "bash",
+    "tool_input": {"command": "ls -la"},
+    "tool_output": "total 32\ndrwxr-xr-x  5 user staff  160 Jan 15 10:30 .\ndrwxr-xr-x 10 user staff  320 Jan 15 09:00 ..",
+    "prompt_number": 3,
+    "project": "my-project",
+    "directory": "/home/user/project"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "observation_id": 1847
+}
+```
+
+## Privacy Filtering
+
+The endpoint applies multiple privacy layers:
+
+1. **Tool Exclusion**: Tools in `excludeTools` config are rejected
+2. **Path Exclusion**: File paths matching `excludePaths` patterns are filtered
+3. **Secret Redaction**: Credentials, tokens, and API keys are automatically redacted
+4. **Custom Patterns**: User-defined regex patterns redact sensitive content
+5. **Size Limits**: Inputs/outputs exceeding configured limits are truncated
+
+Excluded observations return `status: "excluded"` with a reason code.
+
+## Status Codes
+
+- **200 OK**: Request processed (check `status` field for outcome)
+- **401 Unauthorized**: Missing or invalid authentication token
+- **500 Internal Server Error**: Failed to create session or save observation
+
+## Use Cases
+
+- Record AI agent tool executions for memory building
+- Build searchable knowledge base from tool interactions
+- Track file operations and command executions
+- Enable context retrieval for future prompts

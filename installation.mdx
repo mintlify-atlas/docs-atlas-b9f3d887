@@ -1,0 +1,203 @@
+---
+title: "Installation"
+description: "Install LongMem on macOS or Linux"
+---
+
+## System Requirements
+
+<Info>
+  **Supported platforms:**
+  - macOS (Apple Silicon or Intel)
+  - Linux (x64 or ARM64)
+</Info>
+
+**Prerequisites:**
+- Claude Code CLI or OpenCode must be installed
+- Bun runtime (only required if building from source)
+
+## Quick Install (Recommended)
+
+Run the interactive installer:
+
+```bash
+curl -fsSL https://github.com/clouitreee/LongMem/releases/latest/download/install.sh | bash
+```
+
+You'll be guided through a simple setup wizard:
+
+<Steps>
+  <Step title="Choose Privacy Mode">
+    Select from:
+    - **Safe (recommended)** - Redacts secrets and blocks sensitive files
+    - **Flexible** - Safe mode + custom regex patterns
+    - **None** - No redaction (local-only setups)
+  </Step>
+  
+  <Step title="Enable Auto-Context">
+    Allow your AI assistant to automatically query memory (recommended: Yes)
+  </Step>
+  
+  <Step title="Configure Compression (Optional)">
+    Enable compression for better semantic search:
+    - **OpenRouter** - `meta-llama/llama-3.1-8b-instruct` (cost-effective)
+    - **OpenAI** - `gpt-4o-mini`
+    - **Anthropic** - `claude-haiku-4-5-20251001`
+    - **Local** - Ollama or LM Studio (no API key needed)
+  </Step>
+</Steps>
+
+## Non-Interactive Install
+
+For automation or CI/CD, use headless mode:
+
+```bash
+curl -fsSL https://github.com/clouitreee/LongMem/releases/latest/download/install.sh | bash -s -- --yes
+```
+
+This installs LongMem with default settings:
+- Privacy mode: `safe`
+- Auto-context: `enabled`
+- Compression: `disabled`
+
+<Note>
+  Edit `~/.longmem/settings.json` after installation to customize settings.
+</Note>
+
+## Verify Installation
+
+Check that the daemon is running:
+
+```bash
+longmem status
+```
+
+**Expected output (daemon running):**
+
+```
+✓ Daemon is running (PID: 12345)
+✓ Health check: OK
+✓ Port 38741: accessible
+```
+
+**Expected output (daemon stopped):**
+
+```
+✗ Daemon is not running
+
+To start:
+  longmem start
+```
+
+## What Gets Installed
+
+The installer creates the following structure:
+
+```
+~/.longmem/
+├── bin/
+│   ├── longmem         # Main CLI binary
+│   ├── longmemd        # Daemon (symlink)
+│   ├── longmem-mcp     # MCP server (symlink)
+│   └── longmem-hook    # Hook handler (symlink)
+├── hooks/
+│   ├── post-tool.js    # Captures AI tool outputs
+│   ├── prompt.js       # Captures user prompts
+│   └── stop.js         # Session cleanup
+├── logs/
+│   └── daemon.log      # Daemon logs
+├── memory.db           # SQLite database
+├── settings.json       # Configuration
+└── version             # Installed version
+```
+
+<Info>
+  The installer also configures your AI assistant (Claude Code or OpenCode) to use LongMem hooks automatically.
+</Info>
+
+## Install Options
+
+The installer supports additional flags:
+
+```bash
+bash install.sh [OPTIONS]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--yes`, `-y` | Skip all prompts (headless mode) |
+| `--dry-run` | Preview changes without modifying files |
+| `--no-service` | Don't install systemd/launchd service |
+| `--opencode` | Configure OpenCode in addition to Claude Code |
+| `--all` | Configure both Claude Code and OpenCode |
+
+**Example:** Install without systemd service:
+
+```bash
+curl -fsSL https://github.com/clouitreee/LongMem/releases/latest/download/install.sh | bash -s -- --no-service
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Installer hangs or freezes">
+    Use non-interactive mode to bypass prompts:
+    
+    ```bash
+    curl -fsSL https://github.com/clouitreee/LongMem/releases/latest/download/install.sh | bash -s -- --yes
+    ```
+  </Accordion>
+  
+  <Accordion title="Daemon won't start">
+    Check logs for errors:
+    
+    ```bash
+    longmem logs -n 50
+    ```
+    
+    Common issues:
+    - Port 38741 already in use (check `~/.longmem/settings.json` to change port)
+    - Corrupted settings file (LongMem auto-repairs invalid JSON)
+  </Accordion>
+  
+  <Accordion title="Config errors or invalid JSON">
+    LongMem automatically backs up corrupted config files:
+    
+    ```bash
+    ls ~/.longmem/settings.json*
+    # settings.json
+    # settings.json.bak  (auto-backup)
+    ```
+    
+    Restore the backup or delete `settings.json` and re-run the installer.
+  </Accordion>
+  
+  <Accordion title="Client not detected">
+    Ensure Claude Code or OpenCode is installed:
+    
+    ```bash
+    # Check for Claude Code
+    which claude-code
+    
+    # Check for OpenCode
+    which opencode
+    ```
+    
+    If neither is found, install one before running the LongMem installer.
+  </Accordion>
+</AccordionGroup>
+
+## Updating LongMem
+
+To update to the latest version, re-run the installer:
+
+```bash
+curl -fsSL https://github.com/clouitreee/LongMem/releases/latest/download/install.sh | bash
+```
+
+Your existing `settings.json` and `memory.db` are preserved during updates.
+
+## Next Steps
+
+<Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+  Get LongMem running and test memory functionality
+</Card>

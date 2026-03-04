@@ -1,0 +1,332 @@
+---
+title: Privacy configuration
+description: Configure privacy and secret redaction
+---
+
+LongMem provides comprehensive privacy controls to protect sensitive data from being stored in memory. Configure secret redaction, size limits, and file exclusions to ensure your private information stays private.
+
+## Configuration
+
+Privacy settings are configured in the `privacy` section of `~/.longmem/settings.json`:
+
+```json
+{
+  "privacy": {
+    "redactSecrets": true,
+    "mode": "safe",
+    "maxInputSize": 4096,
+    "maxOutputSize": 8192,
+    "excludePaths": [
+      ".env",
+      ".env.*",
+      "*.pem",
+      "*.key",
+      "id_rsa",
+      "id_rsa.*",
+      "id_ed25519",
+      "*.p12",
+      "*.pfx",
+      "*.jks",
+      "credentials.json",
+      "service-account.json"
+    ],
+    "excludeTools": [],
+    "customPatterns": []
+  }
+}
+```
+
+## Configuration fields
+
+### `redactSecrets`
+
+- **Type**: `boolean`
+- **Default**: `true`
+
+Enables automatic detection and redaction of secrets in memory content. When enabled, LongMem scans for patterns like API keys, tokens, passwords, and credentials.
+
+**Example:**
+```json
+{
+  "privacy": {
+    "redactSecrets": true
+  }
+}
+```
+
+<Warning>
+Disabling `redactSecrets` may result in sensitive credentials being stored in the memory database. Only disable if you fully understand the privacy implications.
+</Warning>
+
+### `mode`
+
+- **Type**: `"safe" | "flexible" | "none"`
+- **Default**: `"safe"`
+
+Controls the privacy enforcement level:
+
+- **`safe`**: Strict privacy protection. Excludes sensitive files and paths completely.
+- **`flexible`**: Moderate protection. Allows more content but still redacts secrets.
+- **`none`**: No privacy restrictions. All content is stored (secrets may still be redacted if `redactSecrets` is true).
+
+**Example:**
+```json
+{
+  "privacy": {
+    "mode": "flexible"
+  }
+}
+```
+
+### `maxInputSize`
+
+- **Type**: `number`
+- **Default**: `4096`
+
+Maximum size (in characters) of input content to store. Content exceeding this limit is truncated before storage.
+
+**Example:**
+```json
+{
+  "privacy": {
+    "maxInputSize": 8192
+  }
+}
+```
+
+<Tip>
+Increase this value if you work with large prompts or need to preserve more context. Decrease it to reduce memory database size.
+</Tip>
+
+### `maxOutputSize`
+
+- **Type**: `number`
+- **Default**: `8192`
+
+Maximum size (in characters) of output content to store. Content exceeding this limit is truncated before storage.
+
+**Example:**
+```json
+{
+  "privacy": {
+    "maxOutputSize": 16384
+  }
+}
+```
+
+### `excludePaths`
+
+- **Type**: `string[]`
+- **Default**: See below
+
+List of file path patterns to completely exclude from memory storage. Supports glob patterns.
+
+**Default excluded paths:**
+```json
+[
+  ".env",
+  ".env.*",
+  "*.pem",
+  "*.key",
+  "id_rsa",
+  "id_rsa.*",
+  "id_ed25519",
+  "*.p12",
+  "*.pfx",
+  "*.jks",
+  "credentials.json",
+  "service-account.json"
+]
+```
+
+**Example with custom exclusions:**
+```json
+{
+  "privacy": {
+    "excludePaths": [
+      ".env",
+      ".env.*",
+      "*.pem",
+      "*.key",
+      "secrets/*",
+      "config/credentials.yaml",
+      "*.secret"
+    ]
+  }
+}
+```
+
+<Note>
+When you specify `excludePaths`, you override the defaults completely. Include the default patterns if you want to keep them.
+</Note>
+
+### `excludeTools`
+
+- **Type**: `string[]`
+- **Default**: `[]`
+
+List of tool names to exclude from memory storage. Useful for preventing specific AI tool outputs from being stored.
+
+**Example:**
+```json
+{
+  "privacy": {
+    "excludeTools": ["web_search", "browser", "fetch_url"]
+  }
+}
+```
+
+### `customPatterns`
+
+- **Type**: `Array<{ pattern: string; name: string }>`
+- **Default**: `[]`
+
+Custom regex patterns for detecting and redacting sensitive information beyond the built-in patterns.
+
+**Example:**
+```json
+{
+  "privacy": {
+    "customPatterns": [
+      {
+        "pattern": "ACME-[0-9]{6}",
+        "name": "ACME_CUSTOMER_ID"
+      },
+      {
+        "pattern": "internal-token-[a-f0-9]{32}",
+        "name": "INTERNAL_TOKEN"
+      }
+    ]
+  }
+}
+```
+
+<Tip>
+Use `customPatterns` to protect organization-specific secrets that don't match standard patterns.
+</Tip>
+
+## Privacy modes explained
+
+### Safe mode (recommended)
+
+```json
+{
+  "privacy": {
+    "mode": "safe",
+    "redactSecrets": true
+  }
+}
+```
+
+- Maximum privacy protection
+- Files matching `excludePaths` are completely excluded
+- All secrets are redacted
+- Best for production use and sensitive environments
+
+### Flexible mode
+
+```json
+{
+  "privacy": {
+    "mode": "flexible",
+    "redactSecrets": true
+  }
+}
+```
+
+- Moderate privacy protection
+- More content allowed, but secrets still redacted
+- Good balance between privacy and context
+- Suitable for most development workflows
+
+### None mode
+
+```json
+{
+  "privacy": {
+    "mode": "none",
+    "redactSecrets": false
+  }
+}
+```
+
+- No privacy restrictions
+- All content stored without filtering
+- Secrets may be stored in plaintext
+- **Only use in isolated/test environments**
+
+<Warning>
+`mode: "none"` with `redactSecrets: false` will store all content including potential secrets. This should only be used in isolated development or testing environments where no sensitive data is present.
+</Warning>
+
+## Examples
+
+### Maximum privacy
+
+```json
+{
+  "privacy": {
+    "redactSecrets": true,
+    "mode": "safe",
+    "maxInputSize": 2048,
+    "maxOutputSize": 4096,
+    "excludePaths": [
+      ".env*",
+      "*.key",
+      "*.pem",
+      "secrets/*",
+      "credentials/*",
+      "*.secret"
+    ],
+    "excludeTools": ["browser", "fetch"],
+    "customPatterns": [
+      {
+        "pattern": "COMPANY-API-[A-Z0-9]{20}",
+        "name": "COMPANY_API_KEY"
+      }
+    ]
+  }
+}
+```
+
+### Balanced configuration
+
+```json
+{
+  "privacy": {
+    "redactSecrets": true,
+    "mode": "flexible",
+    "maxInputSize": 4096,
+    "maxOutputSize": 8192
+  }
+}
+```
+
+### Development/testing (low security)
+
+```json
+{
+  "privacy": {
+    "redactSecrets": false,
+    "mode": "none",
+    "maxInputSize": 10000,
+    "maxOutputSize": 20000,
+    "excludePaths": [],
+    "excludeTools": []
+  }
+}
+```
+
+## Best practices
+
+1. **Keep redactSecrets enabled**: Unless you have a specific reason, always keep `redactSecrets: true`
+2. **Use safe mode in production**: For any environment with real user data or credentials
+3. **Customize excludePaths**: Add patterns specific to your project structure
+4. **Add custom patterns**: Define patterns for organization-specific secrets
+5. **Review your settings**: Periodically audit your privacy configuration
+6. **Test your patterns**: Verify that custom patterns correctly match your secrets
+
+## Related
+
+- [Settings overview](/configuration/settings) - Complete configuration guide
+- [How it works](/concepts/how-it-works) - LongMem security model

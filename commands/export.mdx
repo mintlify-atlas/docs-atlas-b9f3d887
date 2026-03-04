@@ -1,0 +1,379 @@
+---
+title: longmem export
+description: Export LongMem memory to JSON or Markdown
+---
+
+The `longmem export` command exports your AI's memory to JSON or Markdown format for backup, analysis, or migration.
+
+## Syntax
+
+```bash
+longmem export [options]
+```
+
+## Options
+
+| Option | Alias | Description | Default |
+|--------|-------|-------------|----------|
+| `--project <name>` | `-p` | Filter by project name | All projects |
+| `--days <n>` | `-d` | Only include last N days (max: 365) | All time |
+| `--format <fmt>` | `-f` | Output format: `json` or `markdown` | `json` |
+| `--raw` | `-r` | Include raw tool_input/tool_output | false |
+| `--output <file>` | `-o` | Write to file instead of stdout | stdout |
+| `--help` | `-h` | Show help message | - |
+
+## Examples
+
+### Export Everything to JSON
+
+```bash
+longmem export > backup.json
+```
+
+### Export Last 30 Days to Markdown
+
+```bash
+longmem export --format markdown --days 30 > report.md
+```
+
+### Export Specific Project
+
+```bash
+longmem export --project myapp -o myapp-memory.json
+```
+
+### Export with Raw Tool Data
+
+```bash
+longmem export --raw --days 7 > detailed-export.json
+```
+
+### Export to File Directly
+
+```bash
+longmem export -f markdown -d 30 -o monthly-report.md
+```
+
+## Requirements
+
+The daemon must be running to export data. If the daemon is stopped, you'll see:
+
+```bash
+$ longmem export
+Error: Daemon not running. Start with: longmem start
+```
+
+## JSON Format
+
+The default JSON export includes:
+
+```json
+{
+  "sessions": [
+    {
+      "id": "abc123def456",
+      "project": "myapp",
+      "timestamp": "2024-03-15T10:30:00Z",
+      "ended_at": "2024-03-15T12:45:00Z",
+      "observations": [
+        {
+          "id": "obs_001",
+          "type": "tool_use",
+          "timestamp": "2024-03-15T10:30:15Z",
+          "tool_name": "read_file",
+          "summary": "Read configuration file"
+        },
+        {
+          "id": "obs_002",
+          "type": "user_message",
+          "timestamp": "2024-03-15T10:31:00Z",
+          "content": "Update the API endpoint"
+        }
+      ],
+      "concepts": [
+        {
+          "id": "concept_001",
+          "timestamp": "2024-03-15T12:45:30Z",
+          "content": "User configured new API endpoint for production environment",
+          "observation_count": 12
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "exported_at": "2024-03-16T09:00:00Z",
+    "total_sessions": 1,
+    "total_observations": 234,
+    "total_concepts": 12,
+    "filters": {
+      "project": null,
+      "days": null
+    }
+  }
+}
+```
+
+### With `--raw` Flag
+
+When using `--raw`, each observation includes full tool_input and tool_output:
+
+```json
+{
+  "id": "obs_001",
+  "type": "tool_use",
+  "tool_name": "read_file",
+  "summary": "Read configuration file",
+  "tool_input": {
+    "path": "/path/to/config.json"
+  },
+  "tool_output": {
+    "content": "{ \"api_url\": \"https://api.example.com\" }"
+  }
+}
+```
+
+Warning: Raw exports can be very large (10-100x larger than standard exports).
+
+## Markdown Format
+
+The Markdown format produces a human-readable report:
+
+```markdown
+# LongMem Memory Export
+
+Exported: 2024-03-16 09:00:00
+
+## Summary
+
+- Total Sessions: 5
+- Total Observations: 234
+- Total Concepts: 12
+- Filters: Last 30 days
+
+---
+
+## Session: myapp (2024-03-15 10:30:00)
+
+**Duration:** 2h 15m  
+**Observations:** 45  
+**Concepts:** 3
+
+### Timeline
+
+**10:30:15** - tool_use: read_file  
+Read configuration file
+
+**10:31:00** - user_message  
+Update the API endpoint
+
+**10:32:30** - tool_use: edit_file  
+Updated config.json with new endpoint
+
+### Concepts
+
+**Concept 1** (12 observations)  
+User configured new API endpoint for production environment
+
+**Concept 2** (8 observations)  
+Debugged CORS issue by adding proper headers
+
+---
+
+## Session: another-project (2024-03-14 14:20:00)
+
+...
+```
+
+## Filtering Options
+
+### By Project
+
+Export only memory related to a specific project:
+
+```bash
+longmem export --project myapp
+```
+
+The project name matches the `project` field set during session start.
+
+### By Time Range
+
+Limit export to recent memory:
+
+```bash
+# Last 7 days
+longmem export --days 7
+
+# Last 30 days
+longmem export --days 30
+
+# Last 90 days
+longmem export --days 90
+```
+
+Maximum value is 365 days.
+
+### Combine Filters
+
+```bash
+longmem export --project myapp --days 30 > myapp-recent.json
+```
+
+## Output Options
+
+### Write to stdout (Default)
+
+```bash
+longmem export > backup.json
+```
+
+### Write to File Directly
+
+```bash
+longmem export -o backup.json
+```
+
+When using `-o`, the command prints:
+
+```bash
+Exported to backup.json
+```
+
+## Use Cases
+
+### Regular Backups
+
+```bash
+#!/bin/bash
+# backup-longmem.sh
+DATE=$(date +%Y%m%d)
+longmem export -o ~/backups/longmem-$DATE.json
+```
+
+Run daily with cron:
+
+```cron
+0 2 * * * ~/backup-longmem.sh
+```
+
+### Generate Weekly Reports
+
+```bash
+longmem export --format markdown --days 7 > weekly-report.md
+```
+
+### Migrate Between Systems
+
+```bash
+# On old system
+longmem export > export.json
+scp export.json newserver:~
+
+# On new system
+# (Import functionality depends on future API)
+```
+
+### Analyze Memory
+
+```bash
+# Export to JSON and analyze with jq
+longmem export | jq '.sessions | length'
+longmem export | jq '.sessions[].concepts | length' | awk '{sum+=$1} END {print sum}'
+```
+
+### Share Project Context
+
+```bash
+# Export last 7 days for specific project as Markdown
+longmem export --project myapp --format markdown --days 7 > context.md
+
+# Share context.md with team
+```
+
+## Error Handling
+
+### Daemon Not Running
+
+```bash
+Error: Daemon not running. Start with: longmem start
+```
+
+**Fix:** Start the daemon first
+
+### Invalid Days Value
+
+```bash
+Error: --days must be between 1 and 365
+```
+
+**Fix:** Use a value between 1 and 365
+
+### Connection Timeout
+
+```bash
+Error: Export failed
+```
+
+If the export takes longer than 60 seconds (large databases), it will timeout.
+
+**Fix:**
+- Use more specific filters (--project, --days)
+- Restart daemon to clear any locks
+- Check database size: `ls -lh ~/.longmem/longmem.db`
+
+### No Data to Export
+
+If filters match no data, the export will be empty:
+
+```json
+{
+  "sessions": [],
+  "metadata": {
+    "total_sessions": 0
+  }
+}
+```
+
+## Exit Codes
+
+- `0` - Export completed successfully
+- `1` - Error occurred (daemon not running, invalid options, export failed)
+
+## Performance
+
+### Export Times
+
+Typical export times:
+
+| Database Size | Sessions | Export Time |
+|---------------|----------|-------------|
+| &lt;10 MB | &lt;50 | &lt;1s |
+| 10-100 MB | 50-500 | 1-5s |
+| 100-500 MB | 500-2000 | 5-30s |
+| &gt;500 MB | &gt;2000 | 30-60s |
+
+### Optimization Tips
+
+1. **Use filters** to reduce export size:
+   ```bash
+   longmem export --days 30  # Much faster than full export
+   ```
+
+2. **Avoid --raw** unless necessary:
+   ```bash
+   # Standard export is 10-100x smaller
+   longmem export  # Good
+   longmem export --raw  # Very large
+   ```
+
+3. **Export to file** instead of piping:
+   ```bash
+   longmem export -o backup.json  # Faster
+   longmem export > backup.json   # Slightly slower (stdout buffering)
+   ```
+
+## Related Commands
+
+- [`longmem stats`](/commands/stats) - View summary statistics
+- [`longmem status`](/commands/status) - Check daemon status
+- [`longmem start`](/commands/start) - Start daemon for export

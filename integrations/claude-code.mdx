@@ -1,0 +1,335 @@
+---
+title: "Claude Code CLI integration"
+description: "Use LongMem with Claude Code CLI"
+---
+
+LongMem integrates with the [Claude Code CLI](https://docs.anthropic.com/en/docs/build-with-claude/computer-use) through a hooks system that captures prompts, tool usage, and session lifecycle events.
+
+## How it works
+
+Claude Code CLI supports lifecycle hooks that LongMem uses to:
+
+1. **Auto-inject context** when topics change (via `prompt.ts`)
+2. **Capture tool observations** for future recall (via `post-tool.ts`)
+3. **Mark session boundaries** for temporal organization (via `stop.ts`)
+
+## Hook architecture
+
+LongMem provides three hooks installed in `~/.longmem/hooks/`:
+
+### 1. Prompt hook (`hooks/prompt.ts`)
+
+**Triggered:** When the user submits a prompt
+
+**Purpose:** Captures the prompt and auto-injects relevant memory context
+
+```typescript
+#!/usr/bin/env bun
+/**
+ * Claude Code CLI — UserPromptSubmit hook
+ * Captures user prompts AND auto-injects relevant memory context.
+ *
+ * Flow:
+ * 1. Parse prompt from stdin
+ * 2. Ensure daemon running
+ * 3. POST /prompt with with_context=true
+ * 4. If daemon returns context → output to stdout (Claude Code injects it)
+ * 5. Always exit 0
+ */
+import { ensureDaemonRunning } from "../shared/auto-start.ts";
+import { DaemonClient } from "../shared/daemon-client.ts";
+
+async function main(): Promise<void> {
+  const raw = await Bun.stdin.text();
+  if (!raw.trim()) process.exit(0);
+
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    process.exit(0);
+  }
+
+  const text = String(data.prompt || data.message || data.text || "");
+  if (!text.trim()) process.exit(0);
+
+  const sessionId = process.env.CLAUDE_SESSION_ID || process.env.SESSION_ID || "cli-default";
+  const project = process.cwd().split("/").pop() || "default";
+  const directory = process.cwd();
+
+  await ensureDaemonRunning();
+
+  const client = new DaemonClient();
+
+  // Single call: saves prompt + returns context if topic changed
+  const result = await client.promptWithContext({
+    session_id: sessionId,
+    text,
+    project,
+    directory,
+    with_context: true,
+  });
+
+  // Output context to stdout — Claude Code injects this into the conversation
+  if (result?.context) {
+    process.stdout.write(result.context);
+  }
+}
+
+main().catch((e) => logHookError("prompt", e)).finally(() => process.exit(0));
+```
+
+**Key features:**
+
+- **Auto-start:** Ensures daemon is running before capturing
+- **Context injection:** Returns relevant context when topic shifts
+- **Non-blocking:** Always exits 0 (never blocks Claude Code)
+
+### 2. Post-tool hook (`hooks/post-tool.ts`)
+
+**Triggered:** After every tool execution
+
+**Purpose:** Captures tool name, input, and output for future recall
+
+```typescript
+#!/usr/bin/env bun
+/**
+ * Claude Code CLI — PostToolUse hook
+ * Captures tool execution and sends to memory daemon.
+ * Always exits 0 (never blocks Claude Code).
+ */
+import { ensureDaemonRunning } from "../shared/auto-start.ts";
+import { DaemonClient } from "../shared/daemon-client.ts";
+
+async function main(): Promise<void> {
+  // Dry-run mode: exit early
+  if (process.env.LONGMEM_DRY_RUN === "1") {
+    process.exit(0);
+  }
+
+  const raw = await Bun.stdin.text();
+  if (!raw.trim()) process.exit(0);
+
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    process.exit(0);
+  }
+
+  const toolName = String(data.tool_name || data.tool || "unknown");
+  const toolInput = (data.tool_input || data.input || {}) as Record<string, unknown>;
+  const toolOutput = String(data.tool_response || data.output || "");
+
+  // Skip noisy or irrelevant tools
+  const SKIP_TOOLS = new Set(["AskQuestion", "TodoWrite", "ListMcpResourcesTool", "Skill", "mem_search", "mem_get", "mem_timeline"]);
+  if (SKIP_TOOLS.has(toolName)) process.exit(0);
+
+  const sessionId = process.env.CLAUDE_SESSION_ID || process.env.SESSION_ID || "cli-default";
+  const project = process.cwd().split("/").pop() || "default";
+  const directory = process.cwd();
+
+  await ensureDaemonRunning();
+
+  const client = new DaemonClient();
+  await client.observe({ session_id: sessionId, tool_name: toolName, tool_input: toolInput, tool_output: toolOutput, project, directory } as any);
+}
+
+main().catch((e) => logHookError("post-tool", e)).finally(() => process.exit(0));
+```
+
+**Key features:**
+
+- **Selective capture:** Skips meta-tools to avoid noise
+- **Full observation:** Captures tool name, input, and output
+- **Dry-run support:** Respects `LONGMEM_DRY_RUN=1`
+
+### 3. Stop hook (`hooks/stop.ts`)
+
+**Triggered:** When the CLI session ends
+
+**Purpose:** Signals session completion for temporal organization
+
+```typescript
+#!/usr/bin/env bun
+/**
+ * Claude Code CLI — Stop hook
+ * Signals session end to memory daemon.
+ * Always exits 0.
+ */
+import { DaemonClient } from "../shared/daemon-client.ts";
+
+async function main(): Promise<void> {
+  const sessionId = process.env.CLAUDE_SESSION_ID || process.env.SESSION_ID || "cli-default";
+  const client = new DaemonClient();
+  await client.sessionEnd({ session_id: sessionId });
+}
+
+main().catch((e) => logHookError("stop", e)).finally(() => process.exit(0));
+```
+
+## Installation
+
+Hooks are automatically installed by `install.ts` when you run:
+
+```bash
+curl -fsSL https://longmem.sh | sh
+```
+
+The installer:
+
+1. Detects your Claude Code CLI installation
+2. Copies hook scripts to `~/.longmem/hooks/`
+3. Registers hooks in Claude Code config
+4. Makes hooks executable
+
+### Hook locations
+
+From `install.ts`:
+
+```typescript
+const jsFiles: [string, string][] = [
+  [join(DIST_DIR, "hooks", "post-tool.js"), join(MEMORY_DIR, "hooks", "post-tool.js")],
+  [join(DIST_DIR, "hooks", "prompt.js"), join(MEMORY_DIR, "hooks", "prompt.js")],
+  [join(DIST_DIR, "hooks", "stop.js"), join(MEMORY_DIR, "hooks", "stop.js")],
+];
+```
+
+Hooks are installed to:
+- `~/.longmem/hooks/prompt.js`
+- `~/.longmem/hooks/post-tool.js`
+- `~/.longmem/hooks/stop.js`
+
+### Manual hook configuration
+
+If you need to configure hooks manually, add them to your Claude Code CLI config:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": "~/.longmem/hooks/prompt.js",
+    "PostToolUse": "~/.longmem/hooks/post-tool.js",
+    "Stop": "~/.longmem/hooks/stop.js"
+  }
+}
+```
+
+## Context injection behavior
+
+### When context is injected
+
+The prompt hook uses **topic change detection** to decide when to inject context:
+
+1. User submits a prompt
+2. Daemon analyzes prompt against recent session history
+3. If topic has shifted significantly → inject relevant context
+4. Otherwise → no injection (prevents token waste)
+
+### What context looks like
+
+Injected context appears in the conversation like:
+
+```
+[Memory context — 3 observations from past sessions]
+
+[42] 2024-03-01 | bash: ls src/auth/
+  Files: src/auth/login.ts, src/auth/session.ts
+  Summary: Authentication module uses JWT tokens with Redis session store
+
+[108] 2024-03-02 | edit: src/auth/login.ts
+  Concepts: authentication, JWT, token refresh
+  Summary: Fixed token refresh race condition by adding mutex lock
+
+[256] 2024-03-03 | grep: "session" in src/
+  Files: src/auth/session.ts, src/middleware/session.ts
+  Summary: Session middleware validates tokens on every request
+```
+
+## Skipped tools
+
+Both the prompt and post-tool hooks skip these tools to avoid noise:
+
+```typescript
+const SKIP_TOOLS = new Set([
+  "AskQuestion",        // User input prompts
+  "TodoWrite",          // Task management
+  "ListMcpResourcesTool", // MCP introspection
+  "Skill",              // Skill loading
+  "mem_search",         // Avoid recursion
+  "mem_get",            // Avoid recursion
+  "mem_timeline",       // Avoid recursion
+]);
+```
+
+## Session ID handling
+
+Sessions are identified via environment variables:
+
+```typescript
+const sessionId = process.env.CLAUDE_SESSION_ID || process.env.SESSION_ID || "cli-default";
+```
+
+Claude Code CLI automatically sets these variables. If running in a custom environment, set them manually:
+
+```bash
+export CLAUDE_SESSION_ID="my-session-$(date +%s)"
+```
+
+## Verification
+
+Check that hooks are working:
+
+```bash
+longmem status
+```
+
+You should see:
+- Hooks installed: 3/3
+- Last prompt: [timestamp]
+- Last observation: [timestamp]
+
+## Troubleshooting
+
+### Hooks not firing
+
+Verify hook registration:
+```bash
+claude-code config show
+```
+
+Check that hooks are listed under the `hooks` section.
+
+### Context not injecting
+
+Enable debug logging:
+```bash
+export LONGMEM_DEBUG=1
+claude-code
+```
+
+Check `~/.longmem/logs/hook-prompt.log` for errors.
+
+### Observations not captured
+
+Verify daemon is running:
+```bash
+longmem status
+```
+
+Watch for incoming observations:
+```bash
+longmem debug --watch
+```
+
+Then run a tool in Claude Code and verify it appears in the log.
+
+## Dry-run mode
+
+Test hooks without saving to database:
+
+```bash
+export LONGMEM_DRY_RUN=1
+claude-code
+```
+
+Hooks will execute but skip all database writes.

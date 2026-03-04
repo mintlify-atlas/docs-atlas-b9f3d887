@@ -1,0 +1,223 @@
+---
+title: longmem status
+description: Check the status of the LongMem daemon
+---
+
+The `longmem status` command displays the current state of the memory daemon.
+
+## Syntax
+
+```bash
+longmem status
+```
+
+This command takes no options or arguments.
+
+## Output
+
+### When Running
+
+```bash
+$ longmem status
+Daemon: running
+Version: 0.3.0
+Database: 2.45 MB
+```
+
+### When Stopped
+
+```bash
+$ longmem status
+Daemon: stopped
+Version: 0.3.0
+```
+
+## Information Displayed
+
+### Daemon Status
+
+Indicates whether the daemon is responding to health checks:
+- `running` - Daemon is active and responding
+- `stopped` - Daemon is not running or not responding
+
+### Version
+
+Shows the installed version of LongMem.
+
+### Database Size
+
+When the daemon is running, shows the size of the SQLite database file (`~/.longmem/longmem.db`) in megabytes.
+
+Typical sizes:
+- **New installation**: &lt;1 MB
+- **Active use (1 week)**: 2-10 MB
+- **Long-term use (months)**: 10-100 MB
+
+## Detailed Status
+
+For more detailed daemon information, you can query the status endpoint directly:
+
+```bash
+curl http://127.0.0.1:5939/status
+```
+
+This returns a JSON response with additional fields:
+
+```json
+{
+  "status": "ok",
+  "pid": 12345,
+  "port": 5939,
+  "uptime": 3600,
+  "pending": 0,
+  "circuit_open": false,
+  "idle_ms": 45000,
+  "service_managed": false,
+  "version": "0.3.0"
+}
+```
+
+### Status Fields
+
+| Field | Description |
+|-------|-------------|
+| `pid` | Process ID of the daemon |
+| `port` | HTTP port the daemon is listening on |
+| `uptime` | Seconds since daemon started |
+| `pending` | Number of compression jobs in queue |
+| `circuit_open` | Whether circuit breaker is open (paused due to errors) |
+| `idle_ms` | Milliseconds since last activity |
+| `service_managed` | Whether running under systemd/launchd |
+| `version` | LongMem version |
+
+## Using the Daemon Status Command
+
+You can also run the daemon's built-in status command for even more detail:
+
+```bash
+longmemd --status
+```
+
+Or:
+
+```bash
+bun ~/.longmem/daemon.js --status
+```
+
+This produces output like:
+
+```bash
+longmem daemon: running
+  PID:        12345
+  Port:       5939
+  Uptime:     3600s
+  Pending:    0 compression jobs
+  Circuit:    closed
+  Idle:       45s
+  Service:    manual
+```
+
+### Understanding the Fields
+
+**PID**: Process identifier - useful for troubleshooting or manual kill
+
+**Port**: HTTP API port - must match configuration
+
+**Uptime**: How long the daemon has been running - resets on restart
+
+**Pending**: Compression jobs waiting to be processed:
+- `0` - All caught up
+- `1-10` - Normal during active use
+- `>50` - May indicate compression is struggling or circuit breaker is open
+
+**Circuit**: Circuit breaker status:
+- `closed` - Normal operation
+- `OPEN (paused)` - Too many compression failures, paused for cooldown
+
+**Idle**: Time since last activity:
+- Low (0-60s) - Active use
+- High (>300s) - Idle, may trigger compression
+
+**Service**: Lifecycle management:
+- `manual` - Started with `longmem start`
+- `systemd/launchd` - Managed by system service manager
+
+## Exit Codes
+
+- `0` - Daemon is running
+- `1` - Daemon is stopped
+
+This allows using `longmem status` in scripts:
+
+```bash
+if longmem status > /dev/null 2>&1; then
+  echo "Daemon is running"
+else
+  echo "Daemon is stopped"
+  longmem start
+fi
+```
+
+## Health Check Mechanism
+
+The status command checks daemon health by sending a request to:
+
+```
+GET http://127.0.0.1:5939/health
+```
+
+The health endpoint returns:
+
+```json
+{
+  "status": "ok",
+  "uptime": 3600
+}
+```
+
+If this request succeeds, the daemon is considered running.
+
+## Troubleshooting
+
+### Status shows "stopped" but process is running
+
+```bash
+# Check for running processes
+ps aux | grep longmemd
+
+# Check if PID file exists
+cat ~/.longmem/longmem.pid
+
+# Check if port is listening
+lsof -ti:5939
+
+# Try daemon status directly
+longmemd --status
+```
+
+This can happen if:
+- Daemon is running but not responding (hung)
+- Different port is configured
+- Firewall blocking localhost
+
+### Stale PID file
+
+If the daemon crashes, it may leave a stale PID file:
+
+```bash
+longmem daemon: stopped
+  Stale PID file: ~/.longmem/longmem.pid (pid 12345, process dead)
+```
+
+Fix by removing the stale file:
+
+```bash
+rm ~/.longmem/longmem.pid
+```
+
+## Related Commands
+
+- [`longmem start`](/commands/start) - Start the daemon
+- [`longmem stop`](/commands/stop) - Stop the daemon
+- [`longmem stats`](/commands/stats) - View memory statistics
+- [`longmem logs`](/commands/logs) - View daemon logs

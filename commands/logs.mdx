@@ -1,0 +1,322 @@
+---
+title: longmem logs
+description: View LongMem daemon logs
+---
+
+The `longmem logs` command displays recent log entries from the memory daemon.
+
+## Syntax
+
+```bash
+longmem logs [options]
+```
+
+## Options
+
+| Option | Alias | Description | Default |
+|--------|-------|-------------|----------|
+| `--lines <n>` | `-n` | Number of lines to show | 50 |
+| `--follow` | `-f` | Follow log output (tail -f) | false |
+| `--help` | `-h` | Show help message | - |
+
+## Examples
+
+### View Last 50 Lines (Default)
+
+```bash
+longmem logs
+```
+
+### View Last 100 Lines
+
+```bash
+longmem logs -n 100
+```
+
+or
+
+```bash
+longmem logs --lines 100
+```
+
+### Follow Logs in Real-Time
+
+```bash
+longmem logs -f
+```
+
+or
+
+```bash
+longmem logs --follow
+```
+
+Press `Ctrl+C` to stop following.
+
+### Combine Options
+
+```bash
+# View last 200 lines, then follow
+longmem logs -n 200 -f
+```
+
+Note: When using `--follow`, the `--lines` option is ignored (it follows from the current end of file).
+
+## Log File Location
+
+Logs are stored at:
+
+```
+~/.longmem/logs/daemon.log
+```
+
+You can also view logs directly:
+
+```bash
+tail -f ~/.longmem/logs/daemon.log
+less ~/.longmem/logs/daemon.log
+```
+
+## Output
+
+### No Logs Available
+
+```bash
+$ longmem logs
+No logs found. Daemon may not have started yet.
+```
+
+This happens when:
+- Daemon has never been started
+- Log file was deleted
+- Daemon hasn't written any logs yet
+
+### Normal Log Output
+
+```
+[longmem] Daemon started on http://127.0.0.1:5939 (pid: 12345)
+[longmem] DB: /Users/user/.longmem/longmem.db
+[longmem] Compression: claude-3-5-sonnet-20241022
+[longmem] Idle threshold reached, triggering compression
+[longmem] Compressing session abc123 (45 observations)
+[longmem] Compressed into 3 concepts
+[longmem] Compression queue: 0 pending
+```
+
+## Log Format
+
+Each log line typically includes:
+
+```
+[longmem] <message>
+```
+
+For errors:
+
+```
+[longmem] ERROR: <error message>
+[longmem] Stack: <stack trace>
+```
+
+## What to Look For
+
+### Startup Messages
+
+```
+[longmem] Daemon started on http://127.0.0.1:5939 (pid: 12345)
+[longmem] DB: /Users/user/.longmem/longmem.db
+[longmem] Compression: claude-3-5-sonnet-20241022
+```
+
+Indicates successful daemon start.
+
+### Warnings
+
+```
+[longmem] WARNING: Privacy mode is 'none' — secrets will NOT be redacted
+[longmem] Warning: No auth token configured. API is open to local processes.
+```
+
+Configuration warnings that may affect security or privacy.
+
+### Compression Activity
+
+```
+[longmem] Idle threshold reached, triggering compression
+[longmem] Compressing session abc123 (45 observations)
+[longmem] Compressed into 3 concepts
+```
+
+Shows normal compression operation.
+
+### Errors
+
+```
+[longmem] ERROR: Compression failed: API key not found
+[longmem] ERROR: Database error: SQLITE_BUSY
+[longmem] ERROR: Failed to fetch from Anthropic API: 429 Too Many Requests
+```
+
+Indicates problems that need attention.
+
+### Shutdown
+
+```
+[longmem] Shutdown requested via HTTP
+[longmem] Shutting down...
+```
+
+Graceful shutdown sequence.
+
+## Common Log Patterns
+
+### Healthy Operation
+
+```
+[longmem] Daemon started on http://127.0.0.1:5939 (pid: 12345)
+[longmem] Idle threshold reached, triggering compression
+[longmem] Compressing session abc123 (12 observations)
+[longmem] Compressed into 1 concept
+[longmem] Compression queue: 0 pending
+```
+
+### API Key Issues
+
+```
+[longmem] ERROR: Compression failed: API key not found
+[longmem] ERROR: ANTHROPIC_API_KEY not set
+```
+
+**Fix:** Set API key in config or environment
+
+### Rate Limiting
+
+```
+[longmem] ERROR: Failed to fetch from Anthropic API: 429 Too Many Requests
+[longmem] Circuit breaker opened due to repeated failures
+[longmem] Compression paused for 60s
+```
+
+**Fix:** Wait for rate limit to reset, or reduce compression frequency
+
+### Database Locks
+
+```
+[longmem] ERROR: Database error: SQLITE_BUSY
+[longmem] ERROR: database is locked
+```
+
+**Fix:** Stop all other processes accessing the database, restart daemon
+
+### Port Conflicts
+
+```
+[longmem] Port 5939 already in use (EADDRINUSE)
+[longmem] Another process is using this port.
+[longmem] Check: lsof -ti:5939
+```
+
+**Fix:** Stop conflicting process or change port in config
+
+## Filtering Logs
+
+Use standard Unix tools to filter logs:
+
+### Show Only Errors
+
+```bash
+longmem logs -n 500 | grep ERROR
+```
+
+### Show Compression Activity
+
+```bash
+longmem logs | grep -i compress
+```
+
+### Show Recent Errors
+
+```bash
+longmem logs -n 1000 | grep -i "error\|warn"
+```
+
+### Count Error Occurrences
+
+```bash
+longmem logs -n 1000 | grep -c ERROR
+```
+
+## Log Rotation
+
+Currently, LongMem does not automatically rotate logs. The `daemon.log` file will grow indefinitely.
+
+To manually rotate:
+
+```bash
+# Stop daemon
+longmem stop
+
+# Archive old logs
+mv ~/.longmem/logs/daemon.log ~/.longmem/logs/daemon.log.$(date +%Y%m%d)
+
+# Start daemon (will create new log file)
+longmem start
+```
+
+Or truncate:
+
+```bash
+# While daemon is running, truncate log
+echo "" > ~/.longmem/logs/daemon.log
+```
+
+## Troubleshooting
+
+### Log file is huge
+
+```bash
+# Check size
+du -h ~/.longmem/logs/daemon.log
+
+# Archive and truncate
+mv ~/.longmem/logs/daemon.log ~/.longmem/logs/daemon.log.old
+longmem stop && longmem start
+```
+
+### Cannot read log file
+
+```bash
+# Check permissions
+ls -la ~/.longmem/logs/daemon.log
+
+# Fix permissions
+chmod 644 ~/.longmem/logs/daemon.log
+```
+
+### Logs show nothing recent
+
+If logs stop updating:
+
+```bash
+# Check if daemon is running
+longmem status
+
+# Check daemon PID
+cat ~/.longmem/longmem.pid
+ps -p $(cat ~/.longmem/longmem.pid)
+
+# Restart daemon
+longmem stop
+longmem start
+```
+
+## Exit Codes
+
+- `0` - Logs displayed successfully or no logs found
+- `1` - Error reading log file
+
+## Related Commands
+
+- [`longmem status`](/commands/status) - Check daemon status
+- [`longmem start`](/commands/start) - Start daemon
+- [`longmem stop`](/commands/stop) - Stop daemon

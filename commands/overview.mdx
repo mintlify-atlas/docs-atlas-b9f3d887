@@ -1,0 +1,122 @@
+---
+title: CLI Commands Overview
+description: Complete reference for all longmem CLI commands
+---
+
+LongMem provides a command-line interface to manage the memory daemon and interact with your AI's persistent memory.
+
+## Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| `longmem start` | Start the memory daemon |
+| `longmem stop` | Stop the memory daemon |
+| `longmem status` | Check daemon status and version |
+| `longmem stats` | View memory statistics |
+| `longmem logs` | View daemon logs |
+| `longmem export` | Export memory to JSON or Markdown |
+| `longmem --tui` | Launch interactive setup wizard |
+| `longmem --version` | Show version information |
+| `longmem --help` | Show help message |
+
+## Command Structure
+
+All longmem commands follow this pattern:
+
+```bash
+longmem [command] [options]
+```
+
+## Help Text
+
+Run `longmem --help` to see the built-in help:
+
+```bash
+longmem - Persistent memory for AI coding assistants
+
+Usage:
+  longmem [command] [options]
+
+Commands:
+  start       Start the memory daemon
+  stop        Stop the memory daemon
+  status      Check daemon status
+  stats       Show memory statistics
+  logs        View recent daemon logs
+  export      Export memory to JSON/Markdown
+  daemon      Run daemon directly (for debugging)
+  mcp         Run MCP server directly (for debugging)
+  hook        Run hook directly (for debugging)
+  --tui       Launch setup wizard
+  --version   Show version
+  --help      Show this help
+
+Examples:
+  longmem                  # Launch setup wizard
+  longmem start            # Start daemon
+  longmem status           # Check if daemon is running
+  longmem export > backup.json
+  longmem export --format markdown --days 30 > report.md
+```
+
+## Common Workflows
+
+### First-time Setup
+
+```bash
+# Run the interactive setup wizard
+longmem --tui
+
+# Start the daemon
+longmem start
+
+# Verify it's running
+longmem status
+```
+
+### Daily Operations
+
+```bash
+# Check daemon status
+longmem status
+
+# View memory statistics
+longmem stats
+
+# View recent logs
+longmem logs -n 100
+
+# Export recent memory
+longmem export --days 7 > recent.json
+```
+
+### Troubleshooting
+
+```bash
+# View logs
+longmem logs
+
+# Follow logs in real-time
+longmem logs -f
+
+# Restart daemon
+longmem stop
+longmem start
+```
+
+## Debugging Commands
+
+These commands are available for advanced debugging:
+
+- `longmem daemon` - Run daemon in foreground (see console output)
+- `longmem mcp` - Run MCP server directly
+- `longmem hook` - Run hook directly
+
+These are typically not needed for normal operation.
+
+## Exit Codes
+
+- `0` - Success
+- `1` - Error occurred
+
+For `longmem status`, exit code 0 means daemon is running, 1 means stopped.

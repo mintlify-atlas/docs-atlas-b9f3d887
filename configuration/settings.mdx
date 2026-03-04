@@ -1,0 +1,168 @@
+---
+title: Settings overview
+description: Configure LongMem via settings.json
+---
+
+LongMem is configured through a `settings.json` file located in the LongMem data directory.
+
+## Settings file location
+
+The settings file is located at:
+
+```
+~/.longmem/settings.json
+```
+
+If the file doesn't exist, LongMem will use default values for all settings.
+
+## Configuration schema
+
+The complete configuration schema is defined by the `MemoryConfig` interface:
+
+```typescript
+interface MemoryConfig {
+  autoContext: {
+    enabled: boolean;
+    maxEntries: number;
+    maxTokens: number;
+    timeoutMs: number;
+  };
+  compression: {
+    enabled: boolean;
+    provider: string;
+    model: string;
+    apiKey: string;
+    baseURL?: string;
+    maxConcurrent: number;
+    idleThresholdSeconds: number;
+    maxPerMinute: number;
+    timeoutSeconds: number;
+    circuitBreakerThreshold: number;
+    circuitBreakerCooldownMs: number;
+    circuitBreakerMaxCooldownMs: number;
+    maxRetries: number;
+  };
+  daemon: {
+    port: number;
+    dbPath: string;
+    logLevel: "debug" | "info" | "warn" | "error";
+    authToken?: string;
+  };
+  privacy: {
+    redactSecrets: boolean;
+    mode: "safe" | "flexible" | "none";
+    maxInputSize: number;
+    maxOutputSize: number;
+    excludePaths: string[];
+    excludeTools: string[];
+    customPatterns: Array<{ pattern: string; name: string }>;
+  };
+}
+```
+
+## Complete example
+
+Here's a complete `settings.json` example with all available options:
+
+```json
+{
+  "autoContext": {
+    "enabled": true,
+    "maxEntries": 5,
+    "maxTokens": 500,
+    "timeoutMs": 300
+  },
+  "compression": {
+    "enabled": false,
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.1-8b-instruct",
+    "apiKey": "",
+    "baseURL": "https://openrouter.ai/api/v1",
+    "maxConcurrent": 1,
+    "idleThresholdSeconds": 5,
+    "maxPerMinute": 10,
+    "timeoutSeconds": 30,
+    "circuitBreakerThreshold": 5,
+    "circuitBreakerCooldownMs": 60000,
+    "circuitBreakerMaxCooldownMs": 300000,
+    "maxRetries": 3
+  },
+  "daemon": {
+    "port": 38741,
+    "dbPath": "~/.longmem/memory.db",
+    "logLevel": "warn",
+    "authToken": null
+  },
+  "privacy": {
+    "redactSecrets": true,
+    "mode": "safe",
+    "maxInputSize": 4096,
+    "maxOutputSize": 8192,
+    "excludePaths": [
+      ".env",
+      ".env.*",
+      "*.pem",
+      "*.key",
+      "id_rsa",
+      "id_rsa.*",
+      "id_ed25519",
+      "*.p12",
+      "*.pfx",
+      "*.jks",
+      "credentials.json",
+      "service-account.json"
+    ],
+    "excludeTools": [],
+    "customPatterns": []
+  }
+}
+```
+
+## How configuration loading works
+
+When LongMem starts, it loads the configuration using the following process:
+
+1. **Load defaults**: Start with the built-in default configuration
+2. **Read settings.json**: If `~/.longmem/settings.json` exists, parse it as JSON
+3. **Deep merge**: Merge the user settings with defaults using a deep merge algorithm
+   - User values override defaults at any nesting level
+   - Missing values use defaults
+   - Arrays are replaced entirely (not merged)
+4. **Apply provider defaults**: If `compression.baseURL` is not set, automatically set it based on the provider
+5. **Validate privacy mode**: Ensure privacy mode is one of `safe`, `flexible`, or `none`
+
+### Partial configuration
+
+You only need to specify settings you want to override. For example, this minimal config is valid:
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "apiKey": "sk-..."
+  }
+}
+```
+
+All other settings will use their default values.
+
+## Configuration sections
+
+Learn more about each configuration section:
+
+- [Daemon configuration](/configuration/daemon) - Port, database, logging
+- [Privacy configuration](/configuration/privacy) - Secret redaction, size limits
+- [Compression configuration](/configuration/compression) - AI-powered memory compression
+- [How it works](/concepts/how-it-works) - Automatic context injection
+
+## Updating configuration
+
+You can update the configuration in two ways:
+
+1. **Manual editing**: Edit `~/.longmem/settings.json` directly and restart the daemon
+2. **CLI command**: Use `longmem config set <key> <value>` (automatically creates a backup)
+
+When using the CLI to update config, LongMem automatically creates a timestamped backup at:
+```
+~/.longmem/settings.json.pre-config-<timestamp>.bak
+```

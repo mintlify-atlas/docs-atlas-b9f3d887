@@ -1,0 +1,89 @@
+---
+title: mem_search
+description: Search past coding session memory across all projects
+---
+
+## Purpose
+
+`mem_search` is the **first tool** you should use when looking for relevant context from past coding sessions. It searches across all projects and returns a compact index of matching observations. Use this to find relevant IDs, then call `mem_get` to retrieve full details.
+
+This tool provides a lightweight way to discover what's in memory without loading full observation details.
+
+## Parameters
+
+<ParamField path="query" type="string" required>
+  Search query — keywords or natural language
+</ParamField>
+
+<ParamField path="project" type="string">
+  Filter by project name (optional — omit to search across all projects)
+</ParamField>
+
+<ParamField path="limit" type="number" default="5">
+  Max results to return (max: 20)
+</ParamField>
+
+## Response Format
+
+Returns a text summary with:
+- Total number of matches
+- Project scope (specific project or all projects)
+- List of observations with:
+  - `[ID:n]` - Observation ID for use with `mem_get` or `mem_timeline`
+  - Date of observation
+  - Tool name used
+  - Related files (if any)
+  - Summary text
+
+**Example response:**
+```
+Found 3 memories (all projects):
+
+[ID:142] 2026-03-01 | bash | server.ts
+  Started development server on port 3000
+
+[ID:156] 2026-03-02 | edit | api/routes.ts
+  Added authentication middleware to API routes
+
+[ID:203] 2026-03-03 | read | config/database.ts
+  Reviewed database connection configuration
+```
+
+If no results found:
+```
+No matching memories found.
+```
+
+## Usage Example
+
+**Search across all projects:**
+```json
+{
+  "query": "authentication bug",
+  "limit": 10
+}
+```
+
+**Search within a specific project:**
+```json
+{
+  "query": "database migration",
+  "project": "my-app",
+  "limit": 5
+}
+```
+
+**Natural language query:**
+```json
+{
+  "query": "when did I fix the login redirect issue"
+}
+```
+
+## Tips
+
+- **Start here first**: Always use `mem_search` before `mem_get` to avoid loading unnecessary data
+- **Use natural language**: The query understands both keywords and natural language
+- **Filter by project**: Use the `project` parameter when you know the context is project-specific
+- **IDs are reusable**: Save IDs from search results to use with `mem_get` or `mem_timeline`
+- **Default limit is conservative**: Default is 5 results to save tokens. Increase if you need broader coverage

@@ -1,0 +1,141 @@
+---
+title: longmem start
+description: Start the LongMem memory daemon
+---
+
+The `longmem start` command starts the memory daemon process in the background.
+
+## Syntax
+
+```bash
+longmem start
+```
+
+This command takes no options or arguments.
+
+## What It Does
+
+When you run `longmem start`, the CLI:
+
+1. **Checks if daemon is already running** - Uses health check to avoid duplicate processes
+2. **Locates the daemon binary** - Looks for `longmemd` in the bin directory or falls back to `daemon.js`
+3. **Spawns the daemon** - Starts as a detached background process
+4. **Waits for startup** - Pauses 1.5 seconds for daemon to initialize
+5. **Verifies health** - Confirms daemon is responding to requests
+
+## Output
+
+### Successful Start
+
+```bash
+$ longmem start
+Starting daemon...
+Daemon started.
+```
+
+### Already Running
+
+```bash
+$ longmem start
+Daemon already running.
+```
+
+### Installation Missing
+
+```bash
+$ longmem start
+Error: Daemon not found. Run `longmem --tui` to install.
+```
+
+### Failed to Start
+
+```bash
+$ longmem start
+Starting daemon...
+Error: Daemon failed to start. Check ~/.longmem/logs/daemon.log
+```
+
+## Under the Hood
+
+The daemon runs as a detached process with:
+
+- **stdio**: All streams redirected to `/dev/null` (logs go to `~/.longmem/logs/daemon.log`)
+- **detached**: Yes - runs independently of parent process
+- **unref**: Yes - allows parent to exit without waiting
+
+The daemon binary is located at:
+- `~/.longmem/bin/longmemd` (installed binary), or
+- `~/.longmem/daemon.js` (script fallback)
+
+## Health Check
+
+The start command performs health checks by sending requests to:
+
+```
+http://127.0.0.1:5939/health
+```
+
+The port may differ based on your configuration (see `~/.longmem/config.json`).
+
+## Exit Codes
+
+- `0` - Daemon started successfully or already running
+- `1` - Failed to start daemon or daemon binary not found
+
+## Troubleshooting
+
+### Daemon fails to start
+
+Check the daemon logs:
+
+```bash
+longmem logs
+```
+
+Common issues:
+- Port already in use
+- Database corruption
+- Missing configuration file
+
+### Process exists but not responding
+
+If the daemon process is running but not responding to health checks:
+
+```bash
+# Stop any existing process
+longmem stop
+
+# Check for stale processes
+ps aux | grep longmemd
+
+# Kill manually if needed
+kill <PID>
+
+# Start again
+longmem start
+```
+
+### Permission errors
+
+Ensure the `~/.longmem` directory has correct permissions:
+
+```bash
+chmod 700 ~/.longmem
+chmod 755 ~/.longmem/bin/longmemd
+```
+
+## What Happens After Start
+
+Once started, the daemon:
+
+1. Creates PID file at `~/.longmem/longmem.pid`
+2. Opens SQLite database at `~/.longmem/longmem.db`
+3. Starts HTTP server on configured port (default: 5939)
+4. Begins processing compression queue after 5 seconds
+5. Listens for MCP tool calls and hook observations
+
+## Related Commands
+
+- [`longmem stop`](/commands/stop) - Stop the daemon
+- [`longmem status`](/commands/status) - Check if daemon is running
+- [`longmem logs`](/commands/logs) - View daemon logs

@@ -1,0 +1,107 @@
+---
+title: "GET /context"
+description: "Get formatted context block from recent observations"
+---
+
+## Overview
+
+The `/context` endpoint retrieves recent observations with compressed summaries and formats them as a ready-to-inject context block. It applies time-based decay weighting to prioritize recent observations.
+
+## Authentication
+
+This endpoint requires a valid authentication token if configured:
+
+```bash
+Authorization: Bearer YOUR_AUTH_TOKEN
+```
+
+## Request
+
+```bash
+GET /context?project=my-project&limit=10
+```
+
+<ParamField query="project" type="string" default="">
+  Filter observations to a specific project. Empty string searches all projects.
+</ParamField>
+
+<ParamField query="limit" type="number" default="10">
+  Maximum number of observations to retrieve. Must be between 1 and 30.
+</ParamField>
+
+## Response
+
+<ResponseField name="context" type="string" required>
+  Formatted markdown context block with observations. Each line follows the format:
+  ```
+  - [YYYY-MM-DD] **tool_name**: compressed_summary
+  ```
+  Only includes observations with compressed summaries.
+</ResponseField>
+
+<ResponseField name="count" type="number" required>
+  Number of observations included in the context block.
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if the request failed.
+</ResponseField>
+
+## Example
+
+```bash
+curl "http://localhost:3000/context?project=my-project&limit=5" \
+  -H "Authorization: Bearer your-token-here"
+```
+
+**Response:**
+
+```json
+{
+  "context": "- [2026-01-15] **bash**: Ran test suite covering authentication flow with OAuth2 integration\n- [2026-01-15] **edit**: Updated JWT token expiration from 1h to 24h in config\n- [2026-01-14] **read**: Reviewed authentication middleware implementation and session management\n- [2026-01-13] **bash**: Fixed failing auth tests by updating mock credentials\n- [2026-01-12] **edit**: Added rate limiting to login endpoint to prevent brute force attacks",
+  "count": 5
+}
+```
+
+## Empty Result
+
+If no observations with compressed summaries exist:
+
+```json
+{
+  "context": "",
+  "count": 0
+}
+```
+
+## Context Format
+
+The returned context block is formatted as markdown:
+
+```markdown
+- [2026-01-15] **tool_name**: Summary of what happened
+- [2026-01-14] **tool_name**: Another observation summary
+```
+
+This format is designed for direct injection into AI prompts or documentation.
+
+## Filtering
+
+- Only observations with `compressed_summary` are included
+- Results are ordered by recency with time-decay weighting
+- More recent observations receive higher priority
+- Project filtering scopes results to relevant work
+
+## Status Codes
+
+- **200 OK**: Context retrieved successfully
+- **401 Unauthorized**: Missing or invalid authentication token
+- **500 Internal Server Error**: Database query failed
+
+## Use Cases
+
+- Inject recent work context into AI prompts
+- Generate session primers for new conversations
+- Build project summaries from observation history
+- Display recent activity in dashboards
+- Create context-aware documentation

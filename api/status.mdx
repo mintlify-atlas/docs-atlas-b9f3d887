@@ -1,0 +1,101 @@
+---
+title: "GET /status"
+description: "Comprehensive daemon status with process and configuration details"
+---
+
+## Overview
+
+The `/status` endpoint provides detailed information about the running daemon, including process details, configuration, and operational metrics. This endpoint requires authentication.
+
+## Authentication
+
+This endpoint requires a valid authentication token if configured:
+
+```bash
+Authorization: Bearer YOUR_AUTH_TOKEN
+```
+
+Set `authToken` in your LongMem configuration file to enable authentication.
+
+## Request
+
+```bash
+GET /status
+```
+
+No parameters required.
+
+## Response
+
+<ResponseField name="status" type="string" required>
+  Status of the daemon. Always returns `"ok"` if running.
+</ResponseField>
+
+<ResponseField name="pid" type="number" required>
+  Process ID of the running daemon.
+</ResponseField>
+
+<ResponseField name="port" type="number" required>
+  Port number the daemon is listening on.
+</ResponseField>
+
+<ResponseField name="uptime" type="number" required>
+  Daemon uptime in seconds since the process started.
+</ResponseField>
+
+<ResponseField name="pending" type="number" required>
+  Number of pending compression jobs in the worker queue.
+</ResponseField>
+
+<ResponseField name="circuit_open" type="boolean" required>
+  Whether the compression circuit breaker is open (paused due to errors).
+</ResponseField>
+
+<ResponseField name="idle_ms" type="number" required>
+  Time in milliseconds since the last activity was recorded.
+</ResponseField>
+
+<ResponseField name="service_managed" type="boolean" required>
+  Whether the daemon is managed by a service manager (systemd or launchd).
+</ResponseField>
+
+<ResponseField name="version" type="string" required>
+  LongMem version string.
+</ResponseField>
+
+## Example
+
+```bash
+curl -H "Authorization: Bearer your-token-here" \
+  http://localhost:3000/status
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "pid": 12345,
+  "port": 3000,
+  "uptime": 7284,
+  "pending": 0,
+  "circuit_open": false,
+  "idle_ms": 123456,
+  "service_managed": false,
+  "version": "1.0.0"
+}
+```
+
+## Status Codes
+
+- **200 OK**: Successfully retrieved status information
+- **401 Unauthorized**: Missing or invalid authentication token
+- **500 Internal Server Error**: Unexpected server error
+
+## Use Cases
+
+- Monitor daemon health and resource usage
+- Check if daemon is service-managed or manually started
+- Verify daemon version for compatibility
+- Debug compression queue issues
+- Monitor idle time for auto-shutdown decisions

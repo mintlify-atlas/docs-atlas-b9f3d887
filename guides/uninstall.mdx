@@ -1,0 +1,249 @@
+---
+title: Uninstall
+description: Remove LongMem from your system
+---
+
+## Quick Uninstall
+
+Remove LongMem completely:
+
+```bash
+bun run uninstall.ts
+```
+
+Or use the non-interactive mode:
+
+```bash
+bun run uninstall.ts --yes
+```
+
+## Command Options
+
+### `--yes` / `-y`
+
+Skip confirmation prompts and uninstall immediately:
+
+```bash
+bun run uninstall.ts --yes
+```
+
+### `--keep-data`
+
+Remove all LongMem files **except** your memory database:
+
+```bash
+bun run uninstall.ts --keep-data
+```
+
+This keeps:
+- `~/.longmem/memory.db`
+- `~/.longmem/memory.db-wal`
+- `~/.longmem/memory.db-shm`
+
+And removes everything else (binaries, hooks, logs, config).
+
+### `--dry-run`
+
+Preview what will be removed without making any changes:
+
+```bash
+bun run uninstall.ts --dry-run
+```
+
+## What Gets Removed
+
+The uninstaller performs these steps:
+
+### 1. Stop the Daemon
+
+Stops the running daemon using:
+- HTTP shutdown endpoint (`/shutdown`)
+- SIGTERM signal to PID from `~/.longmem/longmemd.pid`
+- `pkill -f longmemd` as fallback
+
+From uninstall.ts:113-168
+
+### 2. Remove System Service
+
+**Linux (systemd):**
+- Stops and disables `longmem.service`
+- Removes `~/.config/systemd/user/longmem.service`
+- Reloads systemd daemon
+
+**macOS (launchd):**
+- Unloads the service with `launchctl`
+- Removes `~/Library/LaunchAgents/com.longmem.daemon.plist`
+
+From uninstall.ts:172-226
+
+### 3. Restore Client Configurations
+
+Removes LongMem hooks and MCP configuration from:
+
+**Claude Code:**
+- Removes hooks from `~/.claude/settings.json`
+- Removes MCP server configuration
+- Creates backup: `settings.json.pre-longmem-uninstall-<timestamp>.bak`
+
+**OpenCode:**
+- Removes hooks from `~/.config/opencode/config.json` or `opencode.jsonc`
+- Removes MCP server configuration
+- Creates backup with timestamp
+
+From uninstall.ts:230-270
+
+### 4. Move Installation Directory
+
+Moves `~/.longmem/` to a timestamped backup:
+
+```
+~/.longmem.backup-2026-03-04T12-34-56-789Z/
+```
+
+If `--keep-data` is used, only moves non-database files and keeps the database in place.
+
+From uninstall.ts:274-325
+
+## Backups Created
+
+The uninstaller creates backups of:
+
+- System service files (systemd/launchd)
+- Client configuration files (Claude Code, OpenCode)
+- Entire `~/.longmem/` directory
+
+All backups include timestamps to prevent conflicts.
+
+### Restore from Backup
+
+To restore after uninstalling:
+
+```bash
+# Restore directory
+mv ~/.longmem.backup-<timestamp> ~/.longmem
+
+# Restore Claude Code config
+cp ~/.claude/settings.json.pre-longmem-uninstall-<timestamp>.bak ~/.claude/settings.json
+
+# Restore systemd service (Linux)
+cp ~/.config/systemd/user/longmem.service.uninstalled-<timestamp>.bak ~/.config/systemd/user/longmem.service
+systemctl --user daemon-reload
+systemctl --user enable --now longmem.service
+
+# Restore launchd plist (macOS)
+cp ~/Library/LaunchAgents/com.longmem.daemon.plist.uninstalled-<timestamp>.bak ~/Library/LaunchAgents/com.longmem.daemon.plist
+launchctl load ~/Library/LaunchAgents/com.longmem.daemon.plist
+```
+
+## Manual Cleanup
+
+If the uninstaller fails or you need to clean up manually:
+
+### 1. Stop Daemon
+
+```bash
+# Try HTTP shutdown
+curl -X POST http://127.0.0.1:38741/shutdown
+
+# Or kill by PID
+cat ~/.longmem/longmemd.pid
+kill -15 <pid>
+
+# Or force kill
+pkill -f longmemd
+```
+
+### 2. Remove Service (Linux)
+
+```bash
+systemctl --user stop longmem.service
+systemctl --user disable longmem.service
+rm ~/.config/systemd/user/longmem.service
+systemctl --user daemon-reload
+```
+
+### 3. Remove Service (macOS)
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.longmem.daemon.plist
+rm ~/Library/LaunchAgents/com.longmem.daemon.plist
+```
+
+### 4. Remove Hooks from Claude Code
+
+Edit `~/.claude/settings.json` and remove:
+
+```json
+{
+  "hooks": {
+    "onToolResult": "~/.longmem/hooks/post-tool.js",
+    "onPrompt": "~/.longmem/hooks/prompt.js",
+    "onSessionEnd": "~/.longmem/hooks/stop.js"
+  },
+  "mcpServers": {
+    "longmem": {
+      "command": "~/.longmem/bin/longmem-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+### 5. Remove Hooks from OpenCode
+
+Edit `~/.config/opencode/config.json` and remove similar hooks and MCP configuration.
+
+### 6. Remove Installation Directory
+
+```bash
+# Backup first (optional)
+mv ~/.longmem ~/.longmem.backup-$(date +%Y%m%d)
+
+# Or remove completely
+rm -rf ~/.longmem
+```
+
+## Verification
+
+After uninstalling, verify removal:
+
+```bash
+# Check directory
+ls ~/.longmem
+# Should show: No such file or directory (unless --keep-data was used)
+
+# Check systemd (Linux)
+systemctl --user status longmem.service
+# Should show: Unit longmem.service could not be found
+
+# Check launchd (macOS)
+launchctl list | grep longmem
+# Should show no results
+
+# Check for running processes
+ps aux | grep longmem
+# Should show no results (except the grep command itself)
+
+# Check port availability
+lsof -ti:38741
+# Should show no results
+```
+
+## Reinstalling
+
+To reinstall LongMem after uninstalling:
+
+```bash
+curl -fsSL https://github.com/clouitreee/LongMem/releases/latest/download/install.sh | bash
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/clouitreee/LongMem.git && cd LongMem
+bun install
+bun run build
+bun run install-plugin
+```
+
+If you used `--keep-data`, your previous memory database will be preserved and reused.

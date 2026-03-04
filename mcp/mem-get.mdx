@@ -1,0 +1,105 @@
+---
+title: mem_get
+description: Get full details of specific observations by ID
+---
+
+## Purpose
+
+`mem_get` retrieves complete information about specific observations. Use this **after** `mem_search` to get the full details you need.
+
+This tool is designed for efficiency:
+- Only retrieve observations you actually need
+- Costs tokens only for what you request
+- Supports batch retrieval of multiple observations
+
+## Parameters
+
+<ParamField path="ids" type="array" required>
+  Array of observation IDs to retrieve (from `mem_search`, max: 20)
+  
+  Example: `[142, 156, 203]`
+</ParamField>
+
+## Response Format
+
+Returns full details for each observation:
+
+**Example response:**
+```
+**[142] bash** — 2026-03-01 14:32
+Summary: Started development server on port 3000
+Files: server.ts, package.json
+Concepts: development, server, port-configuration
+Input: bun run dev
+Output: Server started successfully
+> Local: http://localhost:3000
+> Network: http://192.168.1.5:3000
+
+---
+
+**[156] edit** — 2026-03-02 09:15
+Summary: Added authentication middleware to API routes
+Files: api/routes.ts, middleware/auth.ts
+Concepts: authentication, middleware, api-security
+Input: {"filePath": "/api/routes.ts", "oldString": "app.get('/api', handler)", "newString": "app.get('/api', authMiddleware, handler)"}
+Output: Successfully updated routes.ts with authentication middleware. Applied to 5 routes.
+
+---
+
+**[203] read** — 2026-03-03 16:20
+Summary: Reviewed database connection configuration
+Files: config/database.ts
+Concepts: database, configuration, connection-pool
+Input: config/database.ts
+Output: [file contents showing connection pool settings, max connections: 10, timeout: 5000ms]
+```
+
+Each observation includes:
+- **ID and tool name** (header)
+- **Timestamp** (YYYY-MM-DD HH:MM)
+- **Summary** (compressed description)
+- **Files** (referenced files, if any)
+- **Concepts** (extracted concepts/tags)
+- **Input** (tool input, truncated to 200 chars)
+- **Output** (tool output, truncated to 500 chars)
+
+## Usage Example
+
+**Get a single observation:**
+```json
+{
+  "ids": [142]
+}
+```
+
+**Get multiple observations at once:**
+```json
+{
+  "ids": [142, 156, 203]
+}
+```
+
+**Typical workflow:**
+```json
+// Step 1: Search for relevant context
+{
+  "tool": "mem_search",
+  "query": "authentication",
+  "limit": 10
+}
+
+// Step 2: Get full details for interesting results
+{
+  "tool": "mem_get",
+  "ids": [142, 156, 203]
+}
+```
+
+## Tips
+
+- **Use after search**: Always use `mem_search` first to find relevant IDs
+- **Batch requests**: Request multiple IDs at once instead of making separate calls
+- **Token efficiency**: Only request observations you actually need — each observation adds to context
+- **Max limit**: You can request up to 20 observations per call
+- **Empty results**: If none of the IDs exist, you'll get "No observations found for those IDs."
+- **Truncated content**: Input/output are truncated for token efficiency. Use `mem_export` with `include_raw` for full data

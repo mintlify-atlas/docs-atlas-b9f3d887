@@ -1,0 +1,129 @@
+---
+title: mem_export
+description: Export memory to JSON or Markdown for backup, sharing, or analysis
+---
+
+## Purpose
+
+`mem_export` exports LongMem data to JSON or Markdown format. Use this for:
+- **Backup**: Export your entire memory for safekeeping
+- **Analysis**: Get structured data for external tools
+- **Sharing**: Create readable reports of coding sessions
+- **Archival**: Export and save memories from completed projects
+
+This tool generates a complete snapshot of your memory with flexible filtering options.
+
+## Parameters
+
+<ParamField path="project" type="string">
+  Filter by project name (optional — omit for all projects)
+</ParamField>
+
+<ParamField path="days" type="number">
+  Only include last N days (default: all, max: 365)
+</ParamField>
+
+<ParamField path="format" type="string" default="json">
+  Export format: `json` or `markdown`
+</ParamField>
+
+<ParamField path="include_raw" type="boolean" default="false">
+  Include raw tool_input and tool_output in export (increases size significantly)
+</ParamField>
+
+## Response Format
+
+### JSON Format (default)
+
+Returns a summary of the exported data:
+```
+**LongMem Export**
+Exported: 2026-03-04T10:30:00.000Z
+Sessions: 15
+Observations: 247
+User observations: 12
+Concepts: 89
+```
+
+The full JSON structure includes:
+- `exported_at`: Timestamp of export
+- `sessions`: Array of coding sessions
+- `observations`: Array of tool observations
+- `userObservations`: Array of user-created notes
+- `concepts`: Array of extracted concepts
+
+### Markdown Format
+
+Returns formatted markdown (truncated to 8000 chars in response):
+```markdown
+# LongMem Export
+
+Exported: 2026-03-04T10:30:00.000Z
+
+## Sessions
+
+### Session 1 (2026-03-01)
+Project: my-app
+Observations: 23
+
+#### Observation 142
+**Tool:** bash
+**Summary:** Started development server on port 3000
+**Files:** server.ts, package.json
+
+...
+```
+
+## Usage Example
+
+**Export everything:**
+```json
+{
+  "format": "json"
+}
+```
+
+**Export a specific project:**
+```json
+{
+  "project": "my-app",
+  "format": "markdown"
+}
+```
+
+**Export last 30 days:**
+```json
+{
+  "days": 30,
+  "format": "json"
+}
+```
+
+**Export with full raw data:**
+```json
+{
+  "project": "my-app",
+  "include_raw": true,
+  "format": "json"
+}
+```
+
+**Backup recent work on a project:**
+```json
+{
+  "project": "my-app",
+  "days": 7,
+  "format": "markdown",
+  "include_raw": false
+}
+```
+
+## Tips
+
+- **Large exports**: Full exports can be large. Consider filtering by project or days
+- **include_raw**: Only use `include_raw: true` when you need complete tool input/output data
+- **Markdown for humans**: Use markdown format for readable reports and sharing
+- **JSON for tools**: Use JSON format for programmatic analysis or backup
+- **Response truncation**: Markdown responses are truncated in MCP responses. The full export is generated but only preview is shown
+- **Backup strategy**: Export regularly by project to keep manageable snapshots
+- **Days parameter**: Use days to limit scope — e.g., export last 7 days for weekly reviews

@@ -1,0 +1,207 @@
+---
+title: "OpenCode integration"
+description: "Use LongMem with OpenCode"
+---
+
+LongMem integrates with [OpenCode](https://opencode.ai) through a native plugin that automatically captures your coding sessions and provides memory search tools.
+
+## How it works
+
+The OpenCode plugin (`opencode/plugin.ts`) listens to key events in your coding workflow:
+
+### Captured events
+
+1. **`session.created`** — Registers the session with LongMem
+2. **`chat.message`** — Captures all assistant responses for future recall
+3. **`tool.execute.after`** — Records tool usage and outputs (except meta-tools)
+
+### Skipped tools
+
+To avoid noise and recursion, LongMem skips capturing these tools:
+
+```typescript
+const SKIP_TOOLS = new Set([
+  "AskQuestion", "TodoWrite", "ListMcpResourcesTool", "Skill",
+  "mem_search", "mem_get", "mem_timeline",
+]);
+```
+
+## Plugin architecture
+
+The plugin exports a `Plugin` object with these hooks:
+
+```typescript
+export const OpenCodeMemoryPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => {
+  const { directory, project } = input;
+  const projectName = directory.split("/").pop() || project?.id || "default";
+
+  // Auto-start daemon (non-blocking)
+  ensureDaemonRunning().catch(() => {});
+
+  const daemon = new DaemonClient();
+
+  return {
+    event: async ({ event }) => {
+      // Handle session lifecycle events
+    },
+    "chat.message": async (msgInput, output) => {
+      // Capture assistant messages
+    },
+    "tool.execute.after": async (toolInput, output) => {
+      // Capture tool observations
+    },
+    tool: {
+      "mem-search": memSearchTool,
+    },
+  };
+};
+```
+
+## The mem-search tool
+
+LongMem provides a built-in tool for OpenCode that enables the LLM to search past sessions:
+
+```typescript
+export const memSearchTool = tool({
+  description: `Search persistent memory from past coding sessions.
+
+Operations:
+- search: Full-text search observations (with temporal decay ranking)
+- recent: Get recent observations for current project
+- get:    Get full details of specific observations by ID
+- timeline: Chronological context around a specific observation
+
+Use mem_search BEFORE answering any technical question or starting any task.`,
+
+  args: {
+    operation: tool.schema.enum(["search", "recent", "get", "timeline"]),
+    query: tool.schema.string().optional(),
+    ids: tool.schema.array(tool.schema.number()).optional(),
+    observation_id: tool.schema.number().optional(),
+    limit: tool.schema.number().optional().default(5),
+    project: tool.schema.string().optional(),
+  },
+
+  async execute(args, context) {
+    const project = args.project || context.directory.split("/").pop() || "default";
+    // ... implementation
+  },
+});
+```
+
+### Operations
+
+**`search`** — Full-text search with temporal decay ranking
+```bash
+mem-search --operation search --query "authentication bug" --limit 10
+```
+
+**`recent`** — Get latest observations for current project
+```bash
+mem-search --operation recent --limit 5
+```
+
+**`get`** — Retrieve full details by observation IDs
+```bash
+mem-search --operation get --ids [42, 108, 256]
+```
+
+**`timeline`** — Show chronological context around an observation
+```bash
+mem-search --operation timeline --observation_id 108
+```
+
+## Installation
+
+The OpenCode plugin is automatically installed by `install.ts` when you run:
+
+```bash
+curl -fsSL https://longmem.sh | sh
+```
+
+The installer:
+
+1. Detects your OpenCode installation
+2. Copies plugin files to `~/.longmem/`
+3. Configures OpenCode to load the plugin
+4. Starts the LongMem daemon
+
+### Manual plugin configuration
+
+If you need to configure the plugin manually, add it to your OpenCode config:
+
+```json
+{
+  "plugins": [
+    {
+      "path": "~/.longmem/opencode/plugin.ts",
+      "enabled": true
+    }
+  ]
+}
+```
+
+## Auto-start behavior
+
+The plugin automatically starts the LongMem daemon if it's not running:
+
+```typescript
+// Auto-start daemon (non-blocking — if it fails, we degrade gracefully)
+ensureDaemonRunning().catch(() => {});
+```
+
+This means you never need to manually start the daemon — it runs in the background and captures observations transparently.
+
+## Context injection
+
+Unlike some memory systems, LongMem does **not** auto-inject context into every prompt. Instead:
+
+- The LLM uses the `mem-search` tool **when it needs context**
+- This prevents chat contamination and token waste
+- The LLM decides what's relevant, not heuristics
+
+From the source code:
+
+```typescript
+case "session.compacted":
+  // No-op: do NOT inject context here — use MCP tools instead
+  break;
+```
+
+## Verification
+
+Check that the plugin is working:
+
+```bash
+longmem status
+```
+
+You should see:
+- Plugin status: Active
+- Sessions captured: [number]
+- Last observation: [timestamp]
+
+## Troubleshooting
+
+### Plugin not loading
+
+Check OpenCode plugin logs:
+```bash
+open ~/.opencode/logs/plugins.log
+```
+
+### Daemon not responding
+
+Restart the daemon:
+```bash
+longmem restart
+```
+
+### No observations captured
+
+Verify the plugin is receiving events:
+```bash
+longmem debug --watch
+```
+
+Then perform an action in OpenCode and watch for incoming observations.

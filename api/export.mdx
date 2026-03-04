@@ -1,0 +1,198 @@
+---
+title: "GET /export"
+description: "Export sessions and observations in JSON or Markdown format"
+---
+
+## Overview
+
+The `/export` endpoint exports LongMem data including sessions, observations, and compressed summaries. It supports filtering by project and time range, with output in JSON or Markdown format.
+
+## Authentication
+
+This endpoint requires a valid authentication token if configured:
+
+```bash
+Authorization: Bearer YOUR_AUTH_TOKEN
+```
+
+## Request
+
+```bash
+GET /export?project=my-project&days=30&format=json&include_raw=false
+```
+
+<ParamField query="project" type="string">
+  Filter export to a specific project. If omitted, exports all projects.
+</ParamField>
+
+<ParamField query="days" type="number">
+  Export data from the last N days. Must be between 1 and 365. If omitted, exports all data.
+</ParamField>
+
+<ParamField query="format" type="string" default="json">
+  Output format:
+  - `"json"`: Structured JSON (default)
+  - `"markdown"`: Human-readable Markdown
+</ParamField>
+
+<ParamField query="include_raw" type="boolean" default="false">
+  Whether to include raw tool inputs/outputs in JSON export. Only applies to JSON format.
+</ParamField>
+
+## Response (JSON Format)
+
+<ResponseField name="exported_at" type="string" required>
+  ISO 8601 timestamp of when the export was generated.
+</ResponseField>
+
+<ResponseField name="sessions" type="array" required>
+  Array of session objects with:
+  - `id`: Database session ID
+  - `created_at`: ISO 8601 timestamp
+  - `completed_at`: ISO 8601 timestamp or null
+  - `project`: Project name
+  - `first_user_prompt`: First prompt text
+  - Additional session metadata
+</ResponseField>
+
+<ResponseField name="observations" type="array" required>
+  Array of observation objects with:
+  - `id`: Database observation ID
+  - `session_id`: Parent session ID
+  - `created_at`: ISO 8601 timestamp
+  - `tool_name`: Tool that was executed
+  - `compressed_summary`: LLM-generated summary
+  - `files_referenced`: Comma-separated file paths
+  - `tool_input`, `tool_output`: Raw data (if `include_raw=true`)
+  - Additional observation metadata
+</ResponseField>
+
+## Examples
+
+### JSON Export (Default)
+
+```bash
+curl "http://localhost:3000/export?project=my-project&days=7" \
+  -H "Authorization: Bearer your-token-here"
+```
+
+**Response:**
+
+```json
+{
+  "exported_at": "2026-01-15T14:30:22.000Z",
+  "sessions": [
+    {
+      "id": 42,
+      "created_at": "2026-01-15T10:00:00.000Z",
+      "completed_at": "2026-01-15T11:30:00.000Z",
+      "project": "my-project",
+      "first_user_prompt": "Help me implement OAuth authentication"
+    }
+  ],
+  "observations": [
+    {
+      "id": 1847,
+      "session_id": 42,
+      "created_at": "2026-01-15T10:15:00.000Z",
+      "tool_name": "read",
+      "compressed_summary": "Read authentication middleware with JWT validation logic",
+      "files_referenced": "src/auth/middleware.ts"
+    },
+    {
+      "id": 1848,
+      "session_id": 42,
+      "created_at": "2026-01-15T10:20:00.000Z",
+      "tool_name": "edit",
+      "compressed_summary": "Added OAuth2 provider configuration to auth module",
+      "files_referenced": "src/auth/oauth.ts"
+    }
+  ]
+}
+```
+
+### JSON Export with Raw Data
+
+```bash
+curl "http://localhost:3000/export?project=my-project&include_raw=true" \
+  -H "Authorization: Bearer your-token-here"
+```
+
+**Response includes additional fields:**
+
+```json
+{
+  "exported_at": "2026-01-15T14:30:22.000Z",
+  "sessions": [...],
+  "observations": [
+    {
+      "id": 1847,
+      "tool_name": "read",
+      "tool_input": "{\"filePath\":\"/src/auth/middleware.ts\"}",
+      "tool_output": "import { Request, Response } from 'express';\n...",
+      "compressed_summary": "Read authentication middleware with JWT validation logic",
+      "files_referenced": "src/auth/middleware.ts"
+    }
+  ]
+}
+```
+
+### Markdown Export
+
+```bash
+curl "http://localhost:3000/export?project=my-project&days=7&format=markdown" \
+  -H "Authorization: Bearer your-token-here"
+```
+
+**Response (Content-Type: text/markdown):**
+
+```markdown
+# LongMem Export
+
+**Exported:** 2026-01-15T14:30:22.000Z
+**Sessions:** 1
+**Observations:** 2
+
+---
+
+## Session: my-project
+**Date:** 2026-01-15
+**Prompt:** Help me implement OAuth authentication
+
+### read
+**Time:** 2026-01-15T10:15:00.000Z
+**Summary:** Read authentication middleware with JWT validation logic
+**Files:** src/auth/middleware.ts
+
+### edit
+**Time:** 2026-01-15T10:20:00.000Z
+**Summary:** Added OAuth2 provider configuration to auth module
+**Files:** src/auth/oauth.ts
+```
+
+### All Data Export
+
+```bash
+curl "http://localhost:3000/export" \
+  -H "Authorization: Bearer your-token-here"
+```
+
+Exports all sessions and observations across all projects and all time.
+
+## Status Codes
+
+- **200 OK**: Export completed successfully
+  - JSON: `Content-Type: application/json`
+  - Markdown: `Content-Type: text/markdown; charset=utf-8`
+- **400 Bad Request**: Invalid `days` parameter (must be 1-365)
+- **401 Unauthorized**: Missing or invalid authentication token
+- **500 Internal Server Error**: Export query failed
+
+## Use Cases
+
+- Backup LongMem data periodically
+- Migrate data between LongMem instances
+- Generate human-readable session reports
+- Analyze tool usage patterns programmatically
+- Create documentation from observation history
+- Export data for archival or compliance

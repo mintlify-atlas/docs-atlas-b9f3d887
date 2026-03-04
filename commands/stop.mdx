@@ -1,0 +1,161 @@
+---
+title: longmem stop
+description: Stop the LongMem memory daemon
+---
+
+The `longmem stop` command gracefully shuts down the memory daemon.
+
+## Syntax
+
+```bash
+longmem stop
+```
+
+This command takes no options or arguments.
+
+## What It Does
+
+When you run `longmem stop`, the CLI:
+
+1. **Checks if daemon is running** - Performs health check first
+2. **Sends shutdown request** - POST to `/shutdown` endpoint
+3. **Waits for graceful shutdown** - Allows daemon to clean up resources
+
+## Output
+
+### Successful Stop
+
+```bash
+$ longmem stop
+Daemon stopped.
+```
+
+### Already Stopped
+
+```bash
+$ longmem stop
+Daemon not running.
+```
+
+### Failed to Stop
+
+```bash
+$ longmem stop
+Error: Failed to stop daemon.
+```
+
+## Graceful Shutdown Process
+
+When the daemon receives a shutdown request, it:
+
+1. **Stops accepting new requests** - Server stops listening
+2. **Destroys idle detector** - Cancels any pending timers
+3. **Closes database connection** - Ensures all writes are flushed
+4. **Removes PID file** - Cleans up `~/.longmem/longmem.pid`
+5. **Exits process** - Terminates with exit code 0
+
+This process typically completes within 100ms.
+
+## Under the Hood
+
+The stop command sends an HTTP POST request to:
+
+```
+POST http://127.0.0.1:5939/shutdown
+```
+
+The request has a 2-second timeout. If the daemon doesn't respond within this time, the stop command reports an error.
+
+## Signal Handling
+
+The daemon also responds to system signals:
+
+- `SIGTERM` - Graceful shutdown (same as HTTP shutdown)
+- `SIGINT` - Graceful shutdown (Ctrl+C)
+
+Both signals trigger the same cleanup process.
+
+## Exit Codes
+
+- `0` - Daemon stopped successfully or was not running
+- `1` - Failed to stop daemon
+
+## Troubleshooting
+
+### Daemon won't stop
+
+If the stop command fails, you can forcefully kill the process:
+
+```bash
+# Find the daemon PID
+cat ~/.longmem/longmem.pid
+
+# Or search for the process
+ps aux | grep longmemd
+
+# Force kill
+kill -9 <PID>
+
+# Clean up PID file
+rm ~/.longmem/longmem.pid
+```
+
+### Port still in use after stop
+
+Check if the port is still bound:
+
+```bash
+lsof -ti:5939
+```
+
+If a process is still using it:
+
+```bash
+kill $(lsof -ti:5939)
+```
+
+### Database locked after stop
+
+If the database appears locked after stopping:
+
+```bash
+# Check for lingering processes
+ps aux | grep longmem
+
+# Kill all longmem processes
+pkill -f longmem
+
+# If needed, remove SQLite lock files
+rm ~/.longmem/*.db-shm
+rm ~/.longmem/*.db-wal
+```
+
+## When to Stop the Daemon
+
+### Normal Operations
+
+- **System restart** - The daemon doesn't auto-start; stop before reboot
+- **Configuration changes** - Some config changes require restart
+- **Troubleshooting** - Stop, check logs, then start again
+
+### You Don't Need to Stop
+
+- **Regular use** - The daemon is designed to run continuously
+- **Low memory** - Daemon uses minimal resources (typically &lt;50MB)
+- **Battery** - Idle daemon consumes negligible CPU
+
+## What Happens After Stop
+
+After stopping:
+
+- PID file is removed
+- HTTP server is stopped
+- Database connection is closed
+- All compression jobs are abandoned (will resume on next start)
+- MCP tools and hooks will fail until daemon is restarted
+
+## Related Commands
+
+- [`longmem start`](/commands/start) - Start the daemon
+- [`longmem status`](/commands/status) - Check daemon status
+- [`longmem logs`](/commands/logs) - View daemon logs before stopping

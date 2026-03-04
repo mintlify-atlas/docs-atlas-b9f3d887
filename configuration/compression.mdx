@@ -1,0 +1,426 @@
+---
+title: Compression configuration
+description: Configure AI-powered compression
+---
+
+LongMem uses AI-powered compression to keep your memory database lean and relevant. Configure compression providers, models, rate limiting, and circuit breaker settings to optimize performance.
+
+## Configuration
+
+Compression settings are configured in the `compression` section of `~/.longmem/settings.json`:
+
+```json
+{
+  "compression": {
+    "enabled": false,
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.1-8b-instruct",
+    "apiKey": "",
+    "baseURL": "https://openrouter.ai/api/v1",
+    "maxConcurrent": 1,
+    "idleThresholdSeconds": 5,
+    "maxPerMinute": 10,
+    "timeoutSeconds": 30,
+    "circuitBreakerThreshold": 5,
+    "circuitBreakerCooldownMs": 60000,
+    "circuitBreakerMaxCooldownMs": 300000,
+    "maxRetries": 3
+  }
+}
+```
+
+## Configuration fields
+
+### `enabled`
+
+- **Type**: `boolean`
+- **Default**: `false`
+
+Enables AI-powered compression. When enabled, LongMem periodically compresses old memories to reduce database size while preserving semantic meaning.
+
+**Example:**
+```json
+{
+  "compression": {
+    "enabled": true
+  }
+}
+```
+
+<Note>
+You must configure `apiKey` before enabling compression. The compression feature requires an AI provider to function.
+</Note>
+
+### `provider`
+
+- **Type**: `string`
+- **Default**: `"openrouter"`
+- **Supported providers**: `openrouter`, `openai`, `anthropic`, `local`
+
+The AI provider to use for compression. Each provider has a default base URL that is automatically configured.
+
+**Provider base URLs:**
+- `openrouter`: `https://openrouter.ai/api/v1`
+- `openai`: `https://api.openai.com/v1`
+- `anthropic`: `https://api.anthropic.com/v1`
+- `local`: `http://localhost:11434/v1`
+
+**Example:**
+```json
+{
+  "compression": {
+    "provider": "openai"
+  }
+}
+```
+
+### `model`
+
+- **Type**: `string`
+- **Default**: `"meta-llama/llama-3.1-8b-instruct"`
+
+The AI model to use for compression. The model name format depends on your provider.
+
+**Example for OpenRouter:**
+```json
+{
+  "compression": {
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.1-8b-instruct"
+  }
+}
+```
+
+**Example for OpenAI:**
+```json
+{
+  "compression": {
+    "provider": "openai",
+    "model": "gpt-4o-mini"
+  }
+}
+```
+
+### `apiKey`
+
+- **Type**: `string`
+- **Default**: `""` (empty)
+
+API key for authenticating with your AI provider. Required when compression is enabled (except for local providers without authentication).
+
+**Example:**
+```json
+{
+  "compression": {
+    "apiKey": "sk-or-v1-..."
+  }
+}
+```
+
+<Warning>
+Never commit your API key to version control. Consider using environment variables or secure credential storage.
+</Warning>
+
+### `baseURL`
+
+- **Type**: `string | undefined`
+- **Default**: Auto-configured based on provider
+
+Custom base URL for the API endpoint. If not specified, automatically set based on the provider.
+
+**Example for custom endpoint:**
+```json
+{
+  "compression": {
+    "provider": "openai",
+    "baseURL": "https://api.custom-proxy.com/v1"
+  }
+}
+```
+
+### `maxConcurrent`
+
+- **Type**: `number`
+- **Default**: `1`
+
+Maximum number of concurrent compression requests. Increasing this can speed up compression but uses more API quota.
+
+**Example:**
+```json
+{
+  "compression": {
+    "maxConcurrent": 3
+  }
+}
+```
+
+<Tip>
+Start with `1` and increase gradually if compression is too slow. Be mindful of your API provider's rate limits.
+</Tip>
+
+### `idleThresholdSeconds`
+
+- **Type**: `number`
+- **Default**: `5`
+
+Number of seconds the system must be idle before compression starts. Prevents compression from running during active work.
+
+**Example:**
+```json
+{
+  "compression": {
+    "idleThresholdSeconds": 10
+  }
+}
+```
+
+### `maxPerMinute`
+
+- **Type**: `number`
+- **Default**: `10`
+
+Maximum number of compression requests per minute. Rate limiting to stay within API provider limits.
+
+**Example:**
+```json
+{
+  "compression": {
+    "maxPerMinute": 20
+  }
+}
+```
+
+### `timeoutSeconds`
+
+- **Type**: `number`
+- **Default**: `30`
+
+Timeout (in seconds) for each compression API request. Requests exceeding this duration are cancelled.
+
+**Example:**
+```json
+{
+  "compression": {
+    "timeoutSeconds": 60
+  }
+}
+```
+
+### `circuitBreakerThreshold`
+
+- **Type**: `number`
+- **Default**: `5`
+
+Number of consecutive failures before the circuit breaker opens and stops compression attempts.
+
+**Example:**
+```json
+{
+  "compression": {
+    "circuitBreakerThreshold": 3
+  }
+}
+```
+
+### `circuitBreakerCooldownMs`
+
+- **Type**: `number`
+- **Default**: `60000` (1 minute)
+
+Initial cooldown period (in milliseconds) after circuit breaker opens. The system waits this long before retrying.
+
+**Example:**
+```json
+{
+  "compression": {
+    "circuitBreakerCooldownMs": 120000
+  }
+}
+```
+
+### `circuitBreakerMaxCooldownMs`
+
+- **Type**: `number`
+- **Default**: `300000` (5 minutes)
+
+Maximum cooldown period (in milliseconds). The cooldown period doubles with each consecutive failure but won't exceed this value.
+
+**Example:**
+```json
+{
+  "compression": {
+    "circuitBreakerMaxCooldownMs": 600000
+  }
+}
+```
+
+### `maxRetries`
+
+- **Type**: `number`
+- **Default**: `3`
+
+Number of retry attempts for failed compression requests before giving up.
+
+**Example:**
+```json
+{
+  "compression": {
+    "maxRetries": 5
+  }
+}
+```
+
+## Provider examples
+
+### OpenRouter (default)
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.1-8b-instruct",
+    "apiKey": "sk-or-v1-..."
+  }
+}
+```
+
+OpenRouter provides access to many models with competitive pricing. The base URL (`https://openrouter.ai/api/v1`) is set automatically.
+
+### OpenAI
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKey": "sk-proj-...",
+    "maxConcurrent": 2,
+    "maxPerMinute": 50
+  }
+}
+```
+
+OpenAI provides reliable, high-quality models. Use `gpt-4o-mini` for cost-effective compression.
+
+### Anthropic
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "anthropic",
+    "model": "claude-3-haiku-20240307",
+    "apiKey": "sk-ant-...",
+    "maxConcurrent": 2
+  }
+}
+```
+
+Anthropic's Claude models excel at understanding and summarizing context. Use `claude-3-haiku` for fast, cost-effective compression.
+
+### Local (Ollama)
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "local",
+    "model": "llama3.1:8b",
+    "apiKey": "",
+    "baseURL": "http://localhost:11434/v1",
+    "maxConcurrent": 1,
+    "timeoutSeconds": 120
+  }
+}
+```
+
+Run compression with local models using Ollama. No API key required, and all data stays on your machine.
+
+<Tip>
+Local models are great for privacy but may be slower. Adjust `timeoutSeconds` and `maxConcurrent` based on your hardware.
+</Tip>
+
+## Advanced configuration
+
+### High-performance setup
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKey": "sk-proj-...",
+    "maxConcurrent": 5,
+    "maxPerMinute": 100,
+    "timeoutSeconds": 15,
+    "circuitBreakerThreshold": 10,
+    "maxRetries": 5
+  }
+}
+```
+
+### Conservative/budget setup
+
+```json
+{
+  "compression": {
+    "enabled": true,
+    "provider": "openrouter",
+    "model": "meta-llama/llama-3.1-8b-instruct",
+    "apiKey": "sk-or-v1-...",
+    "maxConcurrent": 1,
+    "idleThresholdSeconds": 30,
+    "maxPerMinute": 5,
+    "timeoutSeconds": 45
+  }
+}
+```
+
+## How compression works
+
+1. **Idle detection**: After `idleThresholdSeconds` of inactivity, compression begins
+2. **Batch selection**: Old memories are selected for compression
+3. **AI summarization**: The model summarizes multiple memories while preserving key information
+4. **Rate limiting**: Respects `maxPerMinute` and `maxConcurrent` limits
+5. **Circuit breaker**: Stops attempts if failures exceed `circuitBreakerThreshold`
+6. **Retry logic**: Failed requests are retried up to `maxRetries` times
+
+## Best practices
+
+1. **Start with defaults**: The default settings work well for most users
+2. **Monitor costs**: Track your API usage and adjust `maxPerMinute` accordingly
+3. **Use budget models**: Models like `gpt-4o-mini` or `llama-3.1-8b` are sufficient for compression
+4. **Adjust idle threshold**: Set higher values if compression interferes with your workflow
+5. **Enable circuit breaker**: Prevents runaway API costs if errors occur
+6. **Test locally first**: Try with `provider: "local"` before using paid APIs
+
+## Troubleshooting
+
+### Compression not running
+
+- Verify `enabled: true`
+- Check that `apiKey` is set correctly
+- Ensure system is idle for at least `idleThresholdSeconds`
+- Check daemon logs: `~/.longmem/logs/`
+
+### Circuit breaker opened
+
+- Check API provider status
+- Verify API key is valid and has quota
+- Review `circuitBreakerThreshold` and cooldown settings
+- Check daemon logs for error details
+
+### Slow compression
+
+- Increase `maxConcurrent` (respecting rate limits)
+- Use a faster model
+- Reduce `timeoutSeconds` to fail faster
+- Consider switching providers
+
+## Related
+
+- [Settings overview](/configuration/settings) - Complete configuration guide
+- [How it works](/concepts/how-it-works) - How compression fits into memory lifecycle

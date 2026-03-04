@@ -1,0 +1,174 @@
+---
+title: Daemon configuration
+description: Configure the LongMem daemon
+---
+
+The daemon configuration controls how the LongMem background service operates, including the network port, database location, logging level, and authentication.
+
+## Configuration
+
+Daemon settings are configured in the `daemon` section of `~/.longmem/settings.json`:
+
+```json
+{
+  "daemon": {
+    "port": 38741,
+    "dbPath": "~/.longmem/memory.db",
+    "logLevel": "warn",
+    "authToken": null
+  }
+}
+```
+
+## Configuration fields
+
+### `port`
+
+- **Type**: `number`
+- **Default**: `38741`
+
+The TCP port where the daemon listens for client connections. The daemon binds to `127.0.0.1` (localhost only) for security.
+
+**Example:**
+```json
+{
+  "daemon": {
+    "port": 38741
+  }
+}
+```
+
+<Note>
+If you change the port, you'll need to restart the daemon and ensure clients connect to the new port.
+</Note>
+
+### `dbPath`
+
+- **Type**: `string`
+- **Default**: `~/.longmem/memory.db`
+
+Path to the SQLite database file where memories are stored. Supports tilde (`~`) expansion for the home directory.
+
+**Example:**
+```json
+{
+  "daemon": {
+    "dbPath": "~/custom/path/memories.db"
+  }
+}
+```
+
+<Warning>
+Changing `dbPath` will create a new empty database. Your existing memories will remain in the old location but won't be accessible until you change the path back or migrate the database file.
+</Warning>
+
+### `logLevel`
+
+- **Type**: `"debug" | "info" | "warn" | "error"`
+- **Default**: `"warn"`
+
+Controls the verbosity of daemon logs. Logs are written to `~/.longmem/logs/`.
+
+**Log levels:**
+- `debug` - Verbose output for troubleshooting
+- `info` - General informational messages
+- `warn` - Warning messages only (default)
+- `error` - Error messages only
+
+**Example:**
+```json
+{
+  "daemon": {
+    "logLevel": "debug"
+  }
+}
+```
+
+<Tip>
+Use `"debug"` level when troubleshooting issues or reporting bugs. Remember to restart the daemon after changing the log level.
+</Tip>
+
+### `authToken`
+
+- **Type**: `string | null`
+- **Default**: `null` (no authentication)
+
+Optional authentication token required for clients to connect to the daemon. When set, clients must provide this token to authenticate.
+
+**Example:**
+```json
+{
+  "daemon": {
+    "authToken": "your-secret-token-here"
+  }
+}
+```
+
+## When to use authToken
+
+The `authToken` setting provides an additional security layer. Consider using it when:
+
+- **Multi-user systems**: If multiple users share the same machine and you want to prevent unauthorized access to your memory database
+- **Extra security**: If you store sensitive information in memories and want defense-in-depth
+- **Shared development environments**: In containerized or shared development setups
+
+<Note>
+The daemon already binds to `127.0.0.1` (localhost only), so it's not accessible from other machines on the network. An auth token is optional but recommended for multi-user systems.
+</Note>
+
+## Examples
+
+### Minimal configuration
+
+Use all defaults:
+```json
+{
+  "daemon": {}
+}
+```
+
+### Custom port and debug logging
+
+```json
+{
+  "daemon": {
+    "port": 45000,
+    "logLevel": "debug"
+  }
+}
+```
+
+### Secure multi-user setup
+
+```json
+{
+  "daemon": {
+    "port": 38741,
+    "dbPath": "~/.longmem/memory.db",
+    "logLevel": "warn",
+    "authToken": "randomly-generated-secure-token-12345"
+  }
+}
+```
+
+## Applying changes
+
+After modifying daemon configuration:
+
+1. Save `~/.longmem/settings.json`
+2. Restart the daemon:
+   ```bash
+   longmem stop
+   longmem start
+   ```
+
+3. Verify the daemon is running with new settings:
+   ```bash
+   longmem status
+   ```
+
+## Related
+
+- [Settings overview](/configuration/settings) - Complete configuration guide
+- [Installation](/installation) - Daemon setup
+- [CLI commands](/commands/overview) - Daemon management commands
