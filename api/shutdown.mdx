@@ -1,0 +1,109 @@
+---
+title: "POST /shutdown"
+description: "Gracefully shut down the daemon"
+---
+
+## Overview
+
+Triggers a graceful shutdown of the LongMem daemon. The daemon will:
+1. Stop accepting new requests
+2. Close the database connection
+3. Clean up the PID file
+4. Exit with status 0
+
+## Authentication
+
+Requires Bearer token if `authToken` is configured in daemon settings.
+
+```bash
+Authorization: Bearer <your-token>
+```
+
+## Request
+
+No request body required.
+
+## Response
+
+<ResponseField name="status" type="string">
+  Always "shutting_down"
+</ResponseField>
+
+## Example
+
+```bash cURL
+curl -X POST http://localhost:38741/shutdown
+```
+
+```json Response
+{
+  "status": "shutting_down"
+}
+```
+
+## Use Cases
+
+### Programmatic Shutdown
+
+Useful for scripts that manage the daemon lifecycle:
+
+```bash
+# Stop the daemon via HTTP
+curl -X POST http://localhost:38741/shutdown
+
+# Wait for shutdown
+sleep 1
+
+# Verify it stopped
+longmem status
+```
+
+### Integration Cleanup
+
+Some integrations may call this during uninstall or reconfiguration.
+
+## Implementation Details
+
+From `daemon/server.ts:175-179`:
+
+- Schedules shutdown 100ms after responding
+- Calls the `shutdown()` function which:
+  - Destroys the idle detector
+  - Stops the HTTP server
+  - Closes the SQLite database
+  - Removes the PID file at `~/.longmem/longmem.pid`
+  - Exits the process
+
+## Comparison with CLI
+
+The `longmem stop` CLI command also calls this endpoint internally (or sends SIGTERM).
+
+| Method | Use Case |
+|--------|----------|
+| `longmem stop` | Recommended for users |
+| `POST /shutdown` | For programmatic control |
+| `kill <pid>` | Emergency stop |
+
+## Safety Notes
+
+- **Graceful**: Completes current request handling before shutting down
+- **No data loss**: Database is properly closed with all pending writes flushed
+- **PID cleanup**: Removes stale PID file automatically
+
+## Error Responses
+
+### Unauthorized
+
+```json
+{
+  "error": "Unauthorized"
+}
+```
+
+Status: 401 (if `authToken` is configured and missing/incorrect)
+
+## Related
+
+- [longmem stop](/commands/stop) - CLI command to stop the daemon
+- [longmem status](/commands/status) - Check if daemon is running
+- [GET /health](/api/health) - Health check endpoint

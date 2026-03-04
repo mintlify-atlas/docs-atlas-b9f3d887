@@ -1,0 +1,179 @@
+---
+title: "GET /timeline/:id"
+description: "Get observations before and after a specific observation"
+---
+
+## Overview
+
+Retrieves observations that occurred before and after a specific observation, providing chronological context for what was happening around that moment in the coding session.
+
+## Authentication
+
+Requires Bearer token if `authToken` is configured in daemon settings.
+
+```bash
+Authorization: Bearer <your-token>
+```
+
+## Request
+
+### Path Parameters
+
+<ParamField path="id" type="number" required>
+  Observation ID to get timeline context for
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="before" type="number" default="3">
+  Number of observations to retrieve before the target (max 100)
+</ParamField>
+
+<ParamField query="after" type="number" default="3">
+  Number of observations to retrieve after the target (max 100)
+</ParamField>
+
+## Response
+
+<ResponseField name="target" type="object | null">
+  The target observation (null if ID not found)
+</ResponseField>
+
+<ResponseField name="before" type="array">
+  Observations that occurred before the target
+</ResponseField>
+
+<ResponseField name="after" type="array">
+  Observations that occurred after the target
+</ResponseField>
+
+Each observation object includes: `id`, `tool_name`, `created_at`, `compressed_summary`, `concepts`, `files_referenced`
+
+## Example
+
+```bash cURL
+curl "http://localhost:38741/timeline/123?before=2&after=2"
+```
+
+```json Response
+{
+  "target": {
+    "id": 123,
+    "tool_name": "bash",
+    "created_at": "2024-03-15T10:30:00.000Z",
+    "compressed_summary": "Ran npm test, all tests passed",
+    "concepts": "testing,npm,authentication",
+    "files_referenced": "tests/api.test.ts"
+  },
+  "before": [
+    {
+      "id": 121,
+      "tool_name": "read",
+      "created_at": "2024-03-15T10:28:00.000Z",
+      "compressed_summary": "Read API test file",
+      "concepts": "testing,api",
+      "files_referenced": "tests/api.test.ts"
+    },
+    {
+      "id": 122,
+      "tool_name": "edit",
+      "created_at": "2024-03-15T10:29:00.000Z",
+      "compressed_summary": "Fixed authentication test assertion",
+      "concepts": "testing,authentication,fix",
+      "files_referenced": "tests/api.test.ts"
+    }
+  ],
+  "after": [
+    {
+      "id": 124,
+      "tool_name": "bash",
+      "created_at": "2024-03-15T10:31:00.000Z",
+      "compressed_summary": "Committed test fixes",
+      "concepts": "git,commit",
+      "files_referenced": null
+    },
+    {
+      "id": 125,
+      "tool_name": "bash",
+      "created_at": "2024-03-15T10:32:00.000Z",
+      "compressed_summary": "Pushed to remote",
+      "concepts": "git,push",
+      "files_referenced": null
+    }
+  ]
+}
+```
+
+## Use Cases
+
+### Debugging Context
+
+When searching finds a relevant observation, get the timeline to understand what led to it and what happened next:
+
+```typescript
+const timelineRes = await fetch('http://localhost:38741/timeline/123?before=5&after=5');
+const { target, before, after } = await timelineRes.json();
+
+console.log('What happened before:', before);
+console.log('The moment:', target);
+console.log('What happened after:', after);
+```
+
+### Workflow Reconstruction
+
+Understand the sequence of operations in a debugging session by examining the timeline around each key observation.
+
+### MCP Integration
+
+The `mem_timeline` MCP tool uses this endpoint to provide LLMs with chronological context when they need to understand a sequence of events.
+
+## Implementation Details
+
+From `daemon/routes.ts:315-323`:
+
+- Parses observation ID from URL path
+- Clamps `before` and `after` to [0, 100] range
+- Calls `getTimeline()` which queries observations ordered by timestamp
+- Returns observations from the same session only
+- Target observation is excluded from `before` and `after` arrays
+
+## Query Optimization
+
+Timeline queries are efficient because:
+- Observations table is indexed by `session_id` and `created_at`
+- Query limits prevent unbounded result sets
+- Results are ordered chronologically
+
+## Error Responses
+
+### Invalid ID
+
+```json
+{
+  "error": "Invalid ID"
+}
+```
+
+Status: 400
+
+Returned when ID is not a positive integer.
+
+### Not Found
+
+If the observation ID doesn't exist, returns:
+
+```json
+{
+  "target": null,
+  "before": [],
+  "after": []
+}
+```
+
+Status: 200
+
+## Related
+
+- [GET /observation/:id](/api/observation) - Get full observation details
+- [GET /search](/api/search) - Find observations by query
+- [mem_timeline](/mcp/mem-timeline) - MCP tool that uses this endpoint

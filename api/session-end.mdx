@@ -1,0 +1,97 @@
+---
+title: "POST /session/end"
+description: "Mark a coding session as completed"
+---
+
+## Overview
+
+Marks a session as completed in the LongMem database. This allows the system to properly track session boundaries and improve memory recall.
+
+## Authentication
+
+Requires Bearer token if `authToken` is configured in daemon settings.
+
+```bash
+Authorization: Bearer <your-token>
+```
+
+## Request
+
+<ParamField body="session_id" type="string" required>
+  Session identifier to mark as completed
+</ParamField>
+
+## Response
+
+<ResponseField name="status" type="string">
+  Always "ok" on success
+</ResponseField>
+
+## Example
+
+```bash cURL
+curl -X POST http://localhost:38741/session/end \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "my-coding-session-123"
+  }'
+```
+
+```json Response
+{
+  "status": "ok"
+}
+```
+
+## Use Cases
+
+### Clean Session Boundaries
+
+Call this when ending a coding session to mark the completion timestamp:
+
+```typescript
+await fetch('http://localhost:38741/session/end', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    session_id: currentSessionId
+  })
+});
+```
+
+### Integration Cleanup
+
+Most integrations (OpenCode plugin, Claude Code hooks) call this automatically when the AI session ends or the tool exits.
+
+## Implementation Details
+
+From `daemon/routes.ts:245-256`:
+
+- Looks up the session in the cache or database
+- Marks the session as completed with a timestamp
+- Removes the session from the in-memory cache
+- No-op if session doesn't exist (returns "ok" anyway)
+
+## Behavior Notes
+
+- **Idempotent**: Safe to call multiple times with the same `session_id`
+- **Optional**: Sessions don't require explicit ending — they'll be marked completed on daemon restart
+- **No data loss**: Observations and prompts are already saved when this is called
+
+## Error Responses
+
+### Missing session_id
+
+```json
+{
+  "error": "session_id required"
+}
+```
+
+Status: 400
+
+## Related
+
+- [POST /session/start](/api/session-start) - Create or resume a session
+- [POST /observe](/api/observe) - Record tool executions
+- [GET /search](/api/search) - Search across sessions

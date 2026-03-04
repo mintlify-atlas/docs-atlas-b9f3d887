@@ -1,0 +1,203 @@
+---
+title: "POST /ecosystem/ingest"
+description: "Ingest external codebase context into memory"
+---
+
+## Overview
+
+Ingests external file content into LongMem's user observations table for enhanced context awareness. This allows the AI to reference documentation, configuration files, or other codebase artifacts that weren't directly modified during the session.
+
+<Note>
+This is an advanced API primarily used by ecosystem integrations that want to enrich LongMem's context with additional files.
+</Note>
+
+## Authentication
+
+Requires Bearer token if `authToken` is configured in daemon settings.
+
+```bash
+Authorization: Bearer <your-token>
+```
+
+## Request
+
+<ParamField body="files" type="array" required>
+  Array of file objects to ingest
+</ParamField>
+
+Each file object must contain:
+
+<ParamField body="files[].path" type="string" required>
+  File path (used as identifier)
+</ParamField>
+
+<ParamField body="files[].content" type="string" required>
+  File content to ingest
+</ParamField>
+
+<ParamField body="files[].hash" type="string" required>
+  Content hash (e.g., SHA-256) for deduplication
+</ParamField>
+
+<ParamField body="files[].source" type="string" required>
+  Source identifier (e.g., "vscode-extension", "cli-tool")
+</ParamField>
+
+## Response
+
+<ResponseField name="status" type="string">
+  Always "ok" on success
+</ResponseField>
+
+<ResponseField name="ingested" type="number">
+  Number of files newly ingested or updated
+</ResponseField>
+
+<ResponseField name="skipped" type="number">
+  Number of files skipped (identical hash already stored)
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total files in the request
+</ResponseField>
+
+## Example
+
+```bash cURL
+curl -X POST http://localhost:38741/ecosystem/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "files": [
+      {
+        "path": "README.md",
+        "content": "# My Project\n\nProject documentation...",
+        "hash": "sha256:abc123...",
+        "source": "docs-indexer"
+      },
+      {
+        "path": "config/database.yml",
+        "content": "production:\n  adapter: postgresql\n  ...",
+        "hash": "sha256:def456...",
+        "source": "docs-indexer"
+      }
+    ]
+  }'
+```
+
+```json Response
+{
+  "status": "ok",
+  "ingested": 2,
+  "skipped": 0,
+  "total": 2
+}
+```
+
+## Behavior
+
+### Deduplication
+
+The endpoint uses content hashing to avoid storing duplicate content:
+
+1. **Same hash**: Increments `access_count` and updates `last_accessed` timestamp
+2. **Different hash**: Updates content in place and rebuilds FTS index
+3. **New path**: Inserts as new observation
+
+### Full-Text Search
+
+Ingested content is automatically indexed in SQLite's FTS5 table, making it searchable via [GET /search](/api/search).
+
+## Use Cases
+
+### Documentation Indexing
+
+Index project documentation for AI-assisted coding:
+
+```typescript
+const docs = await loadProjectDocs();
+const files = docs.map(doc => ({
+  path: doc.path,
+  content: doc.content,
+  hash: sha256(doc.content),
+  source: 'docs-indexer'
+}));
+
+await fetch('http://localhost:38741/ecosystem/ingest', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ files })
+});
+```
+
+### Configuration Context
+
+Ingest configuration files so the AI understands project setup:
+
+```typescript
+const configFiles = [
+  'package.json',
+  'tsconfig.json',
+  '.env.example'
+].map(path => ({
+  path,
+  content: fs.readFileSync(path, 'utf-8'),
+  hash: sha256(fs.readFileSync(path, 'utf-8')),
+  source: 'config-indexer'
+}));
+
+await ingestFiles(configFiles);
+```
+
+### API Reference Caching
+
+Cache external API documentation for offline reference.
+
+## Implementation Details
+
+From `daemon/routes.ts:325-384`:
+
+- Files are stored in the `user_observations` table with type `"ecosystem"`
+- Uses `metadata` field to store path, hash, and source
+- Updates existing files in place if hash changes
+- Tracks access count and last accessed timestamp
+- Automatically rebuilds FTS index on content changes
+
+## Storage Schema
+
+Ecosystem observations are stored with:
+
+```sql
+observation_type = 'ecosystem'
+content = <file content>
+metadata = JSON({ path, hash, source })
+access_count = <number of times referenced>
+last_accessed = <ISO timestamp>
+```
+
+## Error Responses
+
+### Missing files array
+
+```json
+{
+  "error": "files array required"
+}
+```
+
+Status: 400
+
+### Invalid file objects
+
+Files without `path` or `content` are silently skipped and counted in the response totals.
+
+## Performance Notes
+
+- **Batch ingestion**: Send multiple files in one request
+- **Deduplication**: Same hash = no database write
+- **FTS rebuild**: Only happens on content changes
+- **No size limits**: But keep individual files under 1MB for best performance
+
+## Related
+
+- [GET /search](/api/search) - Search ingested content
+- [POST /observe](/api/observe) - Record tool observations

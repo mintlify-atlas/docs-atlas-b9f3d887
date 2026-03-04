@@ -86,11 +86,17 @@
             "pages": [
               "api/health",
               "api/status",
+              "api/session-start",
+              "api/session-end",
               "api/observe",
               "api/prompt",
               "api/search",
               "api/context",
-              "api/export"
+              "api/observation",
+              "api/timeline",
+              "api/export",
+              "api/shutdown",
+              "api/ecosystem-ingest"
             ]
           },
           {

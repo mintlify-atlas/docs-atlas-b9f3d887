@@ -1,0 +1,164 @@
+---
+title: "GET /observation/:id"
+description: "Retrieve full observation details by ID"
+---
+
+## Overview
+
+Fetches complete details for one or more observations by their database IDs. Returns raw tool inputs, outputs, and metadata.
+
+## Authentication
+
+Requires Bearer token if `authToken` is configured in daemon settings.
+
+```bash
+Authorization: Bearer <your-token>
+```
+
+## Request
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Observation ID(s). Can be a single ID or comma-separated list (max 50)
+</ParamField>
+
+## Response
+
+<ResponseField name="observations" type="array">
+  Array of observation objects
+</ResponseField>
+
+<Expandable title="Observation object">
+  <ResponseField name="id" type="number">
+    Database observation ID
+  </ResponseField>
+  
+  <ResponseField name="session_id" type="number">
+    Parent session database ID
+  </ResponseField>
+  
+  <ResponseField name="tool_name" type="string">
+    Name of the tool that was executed
+  </ResponseField>
+  
+  <ResponseField name="tool_input" type="string">
+    JSON-encoded tool input (after privacy filtering)
+  </ResponseField>
+  
+  <ResponseField name="tool_output" type="string">
+    Tool output text (after privacy filtering)
+  </ResponseField>
+  
+  <ResponseField name="created_at" type="string">
+    ISO 8601 timestamp
+  </ResponseField>
+  
+  <ResponseField name="compressed_summary" type="string | null">
+    AI-generated summary (if compression enabled)
+  </ResponseField>
+  
+  <ResponseField name="concepts" type="string | null">
+    Extracted concepts for search
+  </ResponseField>
+  
+  <ResponseField name="files_referenced" type="string | null">
+    Comma-separated file paths mentioned
+  </ResponseField>
+  
+  <ResponseField name="metadata" type="string | null">
+    JSON-encoded metadata
+  </ResponseField>
+</Expandable>
+
+## Examples
+
+### Single Observation
+
+```bash cURL
+curl http://localhost:38741/observation/123
+```
+
+```json Response
+{
+  "observations": [
+    {
+      "id": 123,
+      "session_id": 42,
+      "tool_name": "bash",
+      "tool_input": "{\"command\":\"npm test\"}",
+      "tool_output": "PASS tests/api.test.ts\n  ✓ handles authentication (45 ms)",
+      "created_at": "2024-03-15T10:30:00.000Z",
+      "compressed_summary": "Ran npm test, all tests passed",
+      "concepts": "testing,npm,authentication",
+      "files_referenced": "tests/api.test.ts",
+      "metadata": null
+    }
+  ]
+}
+```
+
+### Multiple Observations
+
+```bash cURL
+curl http://localhost:38741/observation/123,124,125
+```
+
+Retrieves up to 50 observations in a single request.
+
+## Use Cases
+
+### Detailed Investigation
+
+After finding relevant observation IDs via [GET /search](/api/search), fetch full details:
+
+```typescript
+// Search first
+const searchRes = await fetch('http://localhost:38741/search?q=authentication');
+const { results } = await searchRes.json();
+
+// Get full details
+const ids = results.map(r => r.id).join(',');
+const detailRes = await fetch(`http://localhost:38741/observation/${ids}`);
+const { observations } = await detailRes.json();
+```
+
+### Context Reconstruction
+
+Reconstruct what happened during a session by fetching all observations in sequence.
+
+## Implementation Details
+
+From `daemon/routes.ts:307-313`:
+
+- Accepts comma-separated IDs in the URL path
+- Filters invalid IDs (non-numeric or ≤ 0)
+- Limits to 50 IDs per request (`MAX_ID_COUNT`)
+- Calls `getFullObservations()` which performs a single SQL query
+- Returns empty array if no valid IDs provided
+
+## Error Responses
+
+### Invalid IDs
+
+```json
+{
+  "error": "Invalid IDs"
+}
+```
+
+Status: 400
+
+Returned when all IDs in the path are invalid (non-numeric, zero, or negative).
+
+## Performance Notes
+
+- **Batch retrieval**: Use comma-separated IDs instead of multiple requests
+- **No pagination**: This endpoint returns all requested observations at once
+- **Database indexed**: Observation ID is the primary key for fast lookups
+
+## Related
+
+- [GET /search](/api/search) - Find observation IDs by query
+- [GET /timeline/:id](/api/timeline) - Get observations before/after a specific one
+- [POST /observe](/api/observe) - Create new observations

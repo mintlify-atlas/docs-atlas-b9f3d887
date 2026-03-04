@@ -1,0 +1,110 @@
+---
+title: "POST /session/start"
+description: "Create or resume a coding session"
+---
+
+## Overview
+
+Creates or resumes a session in the LongMem database. Sessions track related observations and prompts across a coding workflow.
+
+## Authentication
+
+Requires Bearer token if `authToken` is configured in daemon settings.
+
+```bash
+Authorization: Bearer <your-token>
+```
+
+## Request
+
+<ParamField body="session_id" type="string" required>
+  Unique identifier for the session (typically from your AI coding tool)
+</ParamField>
+
+<ParamField body="project" type="string" default="default">
+  Project name or identifier
+</ParamField>
+
+<ParamField body="directory" type="string">
+  Working directory path for this session
+</ParamField>
+
+## Response
+
+<ResponseField name="status" type="string">
+  Always "ok" on success
+</ResponseField>
+
+<ResponseField name="db_id" type="number">
+  Internal database ID for this session
+</ResponseField>
+
+## Example
+
+```bash cURL
+curl -X POST http://localhost:38741/session/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "my-coding-session-123",
+    "project": "my-app",
+    "directory": "/home/user/projects/my-app"
+  }'
+```
+
+```json Response
+{
+  "status": "ok",
+  "db_id": 42
+}
+```
+
+## Use Cases
+
+### Integration Setup
+
+Call this when starting a new coding session to ensure observations are properly tracked:
+
+```typescript
+const response = await fetch('http://localhost:38741/session/start', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    session_id: generateSessionId(),
+    project: getCurrentProject(),
+    directory: process.cwd()
+  })
+});
+
+const { db_id } = await response.json();
+```
+
+### Session Recovery
+
+If your tool crashes and restarts, calling `/session/start` with the same `session_id` will resume the existing session rather than create a duplicate.
+
+## Implementation Details
+
+From `daemon/routes.ts:234-243`:
+
+- Creates a new session in SQLite if `session_id` doesn't exist
+- Returns existing `db_id` if session already exists
+- Caches the session ID mapping for fast lookups
+- Sessions remain active until explicitly ended or daemon restarts
+
+## Error Responses
+
+### Missing session_id
+
+```json
+{
+  "error": "session_id required"
+}
+```
+
+Status: 400
+
+## Related
+
+- [POST /session/end](/api/session-end) - End a session
+- [POST /observe](/api/observe) - Record tool executions in a session
+- [POST /prompt](/api/prompt) - Record prompts in a session
