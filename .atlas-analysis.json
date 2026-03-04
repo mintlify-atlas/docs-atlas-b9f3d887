@@ -1,0 +1,124 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "LongMem",
+  "projectDescription": "Persistent memory daemon for AI coding assistants with cross-session context retention",
+  "theme": "aspen",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/how-it-works",
+              "concepts/privacy-modes",
+              "concepts/compression"
+            ]
+          },
+          {
+            "group": "CLI Commands",
+            "pages": [
+              "commands/overview",
+              "commands/start",
+              "commands/stop",
+              "commands/status",
+              "commands/stats",
+              "commands/logs",
+              "commands/export"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/settings",
+              "configuration/daemon",
+              "configuration/privacy",
+              "configuration/compression"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/opencode",
+              "integrations/claude-code",
+              "integrations/mcp"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/troubleshooting",
+              "guides/development",
+              "guides/uninstall"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Daemon API",
+            "pages": [
+              "api/health",
+              "api/status",
+              "api/observe",
+              "api/prompt",
+              "api/search",
+              "api/context",
+              "api/export"
+            ]
+          },
+          {
+            "group": "MCP Tools",
+            "pages": [
+              "mcp/mem-search",
+              "mcp/mem-timeline",
+              "mcp/mem-get",
+              "mcp/mem-export"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Persistent memory across AI coding sessions",
+    "Local-first storage with SQLite database",
+    "Optional AI-powered compression and summaries",
+    "Privacy-aware with configurable redaction modes",
+    "OpenCode and Claude Code CLI integration",
+    "MCP server for on-demand memory retrieval",
+    "Cross-session context injection",
+    "Export memory to JSON or Markdown"
+  ],
+  "publicApiSurface": [
+    "longmem start",
+    "longmem stop",
+    "longmem status",
+    "longmem stats",
+    "longmem logs",
+    "longmem export",
+    "POST /observe",
+    "POST /prompt",
+    "GET /search",
+    "GET /context",
+    "GET /export",
+    "mem_search (MCP tool)",
+    "mem_timeline (MCP tool)",
+    "mem_get (MCP tool)",
+    "mem_export (MCP tool)"
+  ]
+}
